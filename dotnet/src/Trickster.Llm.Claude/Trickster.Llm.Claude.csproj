@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Trickster.Llm.Claude</RootNamespace>
+    <AssemblyName>Trickster.Llm.Claude</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="*" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Trickster.Core\Trickster.Core.csproj" />
+  </ItemGroup>
+</Project>

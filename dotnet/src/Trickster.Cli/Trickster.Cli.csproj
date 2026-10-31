@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Trickster.Cli</RootNamespace>
+    <AssemblyName>trickster</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Trickster.Core\Trickster.Core.csproj" />
+    <ProjectReference Include="..\Trickster.DotNet\Trickster.DotNet.csproj" />
+    <ProjectReference Include="..\Trickster.Llm.Claude\Trickster.Llm.Claude.csproj" />
+  </ItemGroup>
+</Project>

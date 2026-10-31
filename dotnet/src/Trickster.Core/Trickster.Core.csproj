@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Trickster.Core</RootNamespace>
+    <AssemblyName>Trickster.Core</AssemblyName>
+  </PropertyGroup>
+</Project>
