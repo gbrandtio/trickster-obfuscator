@@ -89,6 +89,15 @@ public sealed class DecompilerPoisonModule : DotNetTransformModule
     public override ITransform<DotNetObfuscationContext> Create() => new DecompilerPoisonTransform();
 }
 
+public sealed class LlmBloatModule : DotNetTransformModule
+{
+    public override string Key => "llmbloat";
+    public override int Order => 85;
+    public override bool IsEnabled(TricksterConfig c) => c.Features.LlmBloat.Enabled;
+    public override void SetEnabled(TricksterConfig c, bool v) => c.Features.LlmBloat.Enabled = v;
+    public override ITransform<DotNetObfuscationContext> Create() => new LlmBloatTransform();
+}
+
 public sealed class AntiDebugModule : DotNetTransformModule
 {
     public override string Key => "antidebug";

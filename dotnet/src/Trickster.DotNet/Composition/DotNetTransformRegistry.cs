@@ -22,6 +22,7 @@ public sealed class DotNetTransformRegistry : ITransformRegistry<DotNetObfuscati
             new RenameModule(),
             new IntegrityModule(),
             new DecompilerPoisonModule(),
+            new LlmBloatModule(),
             new AntiDebugModule(),
             new RaspModule(),
         };

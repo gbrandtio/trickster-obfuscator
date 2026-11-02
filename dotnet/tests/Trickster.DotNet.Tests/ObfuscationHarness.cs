@@ -68,6 +68,8 @@ internal static class ObfuscationHarness
         c.Features.AntiDebug.Enabled = true;
         c.Features.Virtualization.Enabled = true;
         c.Features.Rasp.Enabled = true;
+        c.Features.LlmBloat.Enabled = true;
+        c.Features.LlmBloat.Intensity = "low"; // keep the all-tiers build fast
         return c;
     }
 }

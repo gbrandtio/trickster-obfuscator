@@ -49,6 +49,7 @@ Each tier and each cross-cutting feature has its own document under `docs/`. Sta
 | `polymorphism` | on | [polymorphism.md](docs/tiers/polymorphism.md): per-build variation / seed selection |
 | `honeypots` | off | [honeypots.md](docs/tiers/honeypots.md): fake secrets + leak canary |
 | `poison` | off | [decompiler-poison.md](docs/tiers/decompiler-poison.md): decompiler-hostile decoy members |
+| `llmbloat` | off | [llm-bloat.md](docs/tiers/llm-bloat.md): many inert decoy types that make the binary token-expensive to analyze with an LLM (passive, author's-own-binary only) |
 | `antidebug` | off | [anti-debug.md](docs/tiers/anti-debug.md): benign `Debugger.IsAttached` probe; optional `--anti-debug-decoy` degrade-to-decoy |
 | `virtualize` | off | [virtualization.md](docs/tiers/virtualization.md): compile integer/boolean methods into custom VM bytecode |
 | `rasp` | off | [rasp.md](docs/tiers/rasp.md): runtime self-protection — re-check for debuggers/profilers/tampering during execution, degrade to inert fakes |

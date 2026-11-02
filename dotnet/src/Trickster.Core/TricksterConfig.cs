@@ -86,6 +86,9 @@ public sealed class FeatureFlags
 
     [JsonPropertyName("rasp")]
     public RaspOptions Rasp { get; set; } = new() { Enabled = false };
+
+    [JsonPropertyName("llmBloat")]
+    public LlmBloatOptions LlmBloat { get; set; } = new() { Enabled = false };
 }
 
 /// <summary>Base for a flag that is simply on/off.</summary>
@@ -166,6 +169,30 @@ public sealed class RaspOptions : ToggleOptions
     /// <summary>Minimum milliseconds between whole-image re-hashes (amortizes the cost).</summary>
     [JsonPropertyName("integrityIntervalMs")]
     public int IntegrityIntervalMs { get; set; } = 5000;
+}
+
+/// <summary>
+/// Anti-LLM-analysis volume inflation. Opt-in, off by default. Injects a large number of inert,
+/// additive decoy types so the author's own binary is token-expensive to analyze when decompiled
+/// and fed to an LLM. Passive and defensive: emits no text/payload and targets no third-party
+/// agent or service. Bounded by <see cref="MaxTypes"/> so output size cannot balloon unboundedly.
+/// </summary>
+public sealed class LlmBloatOptions : ToggleOptions
+{
+    /// <summary>"low" | "medium" | "high": scales how many inert decoy types are injected.</summary>
+    [JsonPropertyName("intensity")]
+    public string Intensity { get; set; } = "medium";
+
+    /// <summary>Hard ceiling on injected decoy types, so output size stays bounded.</summary>
+    [JsonPropertyName("maxTypes")]
+    public int MaxTypes { get; set; } = 500;
+
+    public int ResolvedTypeCount => Math.Min(MaxTypes, (Intensity ?? "medium").ToLowerInvariant() switch
+    {
+        "low" => 25,
+        "high" => 200,
+        _ => 75,
+    });
 }
 
 public sealed class MisdirectionOptions : ToggleOptions

@@ -178,7 +178,7 @@ public class TierBehaviorTests
         f.Rename.Enabled = f.StringEncryption.Enabled = f.ControlFlow.Enabled =
             f.LlmMisdirection.Enabled = f.IntegrityChecks.Enabled =
             f.Honeypots.Enabled = f.DecompilerPoison.Enabled = f.AntiDebug.Enabled =
-            f.Virtualization.Enabled = false;
+            f.Virtualization.Enabled = f.LlmBloat.Enabled = false;
         switch (tier)
         {
             case "rename": f.Rename.Enabled = true; break;
@@ -191,6 +191,7 @@ public class TierBehaviorTests
             case "antidebug": f.AntiDebug.Enabled = true; break;
             case "virtualize": f.Virtualization.Enabled = true; break;
             case "rasp": f.Rasp.Enabled = true; break;
+            case "llmbloat": f.LlmBloat.Enabled = true; break;
         }
     }
 
@@ -419,5 +420,56 @@ public class TierBehaviorTests
         {
             alc.Unload();
         }
+    }
+
+    [Fact]
+    public void LlmBloat_InjectsManyInertTypes()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "llmbloat");
+        c.Features.LlmBloat.Intensity = "low"; // 25 types, keeps the test fast
+
+        var path = ObfuscationHarness.Obfuscate(c, "llmbloat");
+        using var asm = AssemblyDefinition.ReadAssembly(path);
+        var bloatTypes = asm.MainModule.Types
+            .Where(t => t.Namespace == "Trickster.Bloat")
+            .ToList();
+
+        Assert.Equal(c.Features.LlmBloat.ResolvedTypeCount, bloatTypes.Count);
+        // Every decoy method is a type-correct no-op (ldc.i4.0; ret) — no string/payload content.
+        var decoyMethods = bloatTypes.SelectMany(t => t.Methods).Where(m => m.Name != ".ctor");
+        Assert.All(decoyMethods, m =>
+            Assert.DoesNotContain(m.Body.Instructions, ins => ins.OpCode == OpCodes.Ldstr));
+    }
+
+    [Fact]
+    public void LlmBloat_RespectsMaxTypesCap()
+    {
+        var c = TricksterConfig.Default();
+        c.Features.LlmBloat.Enabled = true;
+        c.Features.LlmBloat.Intensity = "high"; // base 200
+        c.Features.LlmBloat.MaxTypes = 10;      // cap below the base
+        Assert.Equal(10, c.Features.LlmBloat.ResolvedTypeCount);
+    }
+
+    [Fact]
+    public void LlmBloat_PreservesBehavior()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "llmbloat");
+        c.Features.LlmBloat.Intensity = "low";
+
+        var path = ObfuscationHarness.Obfuscate(c, "llmbloat-behavior");
+        Assert.Equal(
+            ObfuscationHarness.InvokeRun(ObfuscationHarness.SampleDll, 2),
+            ObfuscationHarness.InvokeRun(path, 2));
+    }
+
+    [Fact]
+    public void LlmBloat_OffByDefault()
+    {
+        var path = ObfuscationHarness.Obfuscate(TricksterConfig.Default(), "llmbloat-default");
+        using var asm = AssemblyDefinition.ReadAssembly(path);
+        Assert.DoesNotContain(asm.MainModule.Types, t => t.Namespace == "Trickster.Bloat");
     }
 }

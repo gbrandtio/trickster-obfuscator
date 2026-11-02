@@ -39,11 +39,12 @@ are given, and `0` otherwise).
 | `--rasp` / `--no-rasp` | Enable or disable runtime self-protection (re-check for debuggers/profilers/tampering during execution; degrade guarded methods to inert fakes). |
 | `--no-rasp-native` | Keep RASP but disable its native (Windows/Linux) debugger probes. |
 | `--rasp-interval <ms>` | Minimum milliseconds between RASP whole-image re-hashes (default `5000`). |
+| `--llm-bloat` / `--no-llm-bloat` | Enable or disable anti-LLM-analysis volume inflation: inject many inert decoy types so the binary is token-expensive to analyze with an LLM. Passive, author's-own-binary only. Amount/cap via config (`features.llmBloat.intensity` / `maxTypes`). |
 | `--only <a,b,...>` | Enable only the listed tiers; all others off. |
 | `--off <a,b,...>` | Turn off the listed tiers. |
 
 Tier names for `--only`/`--off`: `rename`, `strings`, `controlflow`, `misdirection`, `integrity`,
-`polymorphism`, `honeypots`, `poison`, `antidebug`, `virtualize`, `rasp`.
+`polymorphism`, `honeypots`, `poison`, `llmbloat`, `antidebug`, `virtualize`, `rasp`.
 
 ## Flag ordering
 

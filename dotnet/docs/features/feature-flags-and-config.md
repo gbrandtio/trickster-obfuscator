@@ -29,7 +29,8 @@ are case-insensitive and the parser allows comments and trailing commas.
     "decompilerPoison": { "enabled": false },
     "antiDebug":        { "enabled": false, "decoy": false },
     "virtualization":   { "enabled": false },
-    "rasp":             { "enabled": false, "liveDebuggerCheck": true, "nativeDebuggerCheck": true, "profilerCheck": true, "periodicIntegrityCheck": true, "integrityIntervalMs": 5000 }
+    "rasp":             { "enabled": false, "liveDebuggerCheck": true, "nativeDebuggerCheck": true, "profilerCheck": true, "periodicIntegrityCheck": true, "integrityIntervalMs": 5000 },
+    "llmBloat":         { "enabled": false, "intensity": "medium", "maxTypes": 500 }
   }
 }
 ```
@@ -60,19 +61,26 @@ are case-insensitive and the parser allows comments and trailing commas.
   `periodicIntegrityCheck` (throttled whole-image re-hash; requires the `integrity` tier; default
   `true`), and `integrityIntervalMs` (default `5000`; CLI `--rasp-interval`). See
   [rasp](../tiers/rasp.md).
+- `features.llmBloat`: anti-LLM-analysis volume inflation (default off; CLI `--llm-bloat` /
+  `--no-llm-bloat`). Injects many inert decoy types so the author's own binary is token-expensive
+  to analyze when decompiled and fed to an LLM. Sub-options: `intensity` (`"low"` = 25 types,
+  `"medium"` = 75, `"high"` = 200; any other value → `"medium"`) and `maxTypes` (hard ceiling,
+  default `500`; the resolved count is `min(intensity, maxTypes)`). Passive and defensive — emits
+  no text/payload and targets no third-party agent. See [llm-bloat](../tiers/llm-bloat.md).
 
 ## Defaults
 
 | Default on (behavior-safe) | Default off (higher-risk / dual-use) |
 |---|---|
-| `rename`, `stringEncryption`, `controlFlow`, `llmMisdirection`, `integrityChecks`, `polymorphism` | `honeypots`, `decompilerPoison`, `antiDebug`, `virtualization`, `rasp` |
+| `rename`, `stringEncryption`, `controlFlow`, `llmMisdirection`, `integrityChecks`, `polymorphism` | `honeypots`, `decompilerPoison`, `antiDebug`, `virtualization`, `rasp`, `llmBloat` |
 
 ## Option types
 
 `ToggleOptions` (base, `enabled`), `RenameOptions` (+`keepPublic`, +`exclude`), `ControlFlowOptions`
 (+`opaquePredicates`, +`flatten`, +`indirectDispatch`), `MisdirectionOptions` (+`intensity`, with the `DecoyTypeCount` mapping above),
 `AntiDebugOptions` (+`decoy`), `RaspOptions` (+`liveDebuggerCheck`, +`nativeDebuggerCheck`,
-+`profilerCheck`, +`periodicIntegrityCheck`, +`integrityIntervalMs`).
++`profilerCheck`, +`periodicIntegrityCheck`, +`integrityIntervalMs`), `LlmBloatOptions`
+(+`intensity`, +`maxTypes`, with the `ResolvedTypeCount` mapping above).
 
 ## Related docs
 

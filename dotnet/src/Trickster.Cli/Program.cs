@@ -53,6 +53,8 @@ try
                 break;
             case "--virtualize": overrides.Add(c => c.Features.Virtualization.Enabled = true); break;
             case "--no-virtualize": overrides.Add(c => c.Features.Virtualization.Enabled = false); break;
+            case "--llm-bloat": overrides.Add(c => c.Features.LlmBloat.Enabled = true); break;
+            case "--no-llm-bloat": overrides.Add(c => c.Features.LlmBloat.Enabled = false); break;
             case "--rasp": overrides.Add(c => c.Features.Rasp.Enabled = true); break;
             case "--no-rasp": overrides.Add(c => c.Features.Rasp.Enabled = false); break;
             case "--no-rasp-native": overrides.Add(c => c.Features.Rasp.NativeDebuggerCheck = false); break;
@@ -188,6 +190,10 @@ Options:
                              decoy logic while a debugger is attached (implies --anti-debug)
   --virtualize               Compile eligible integer/boolean methods into custom VM bytecode
   --no-virtualize            Disable method virtualization
+  --llm-bloat                Inject many inert decoy types so the binary is token-expensive to
+                             analyze with an LLM (passive, author's-own-binary only; see docs).
+                             Amount/cap via config (features.llmBloat.intensity / maxTypes)
+  --no-llm-bloat             Disable anti-LLM-analysis volume inflation
   --rasp                     Runtime self-protection: re-check for debuggers/profilers/tampering
                              during execution and degrade guarded methods to inert fakes
   --no-rasp                  Disable runtime self-protection
@@ -196,5 +202,5 @@ Options:
   --only <a,b,...>           Enable only these tiers
   --off  <a,b,...>           Disable these tiers
   Tier names: rename, strings, controlflow, misdirection, integrity,
-              polymorphism, honeypots, poison, antidebug, virtualize, rasp");
+              polymorphism, honeypots, poison, llmbloat, antidebug, virtualize, rasp");
 }
