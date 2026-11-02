@@ -27,6 +27,9 @@ bld/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+# The rule above targets the .NET build-output "artifacts/" dir, but it is unanchored and
+# case-insensitive on some filesystems, so it also swallows this source folder. Un-ignore it.
+!dotnet/src/Trickster.Core/Artifacts/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

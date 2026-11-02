@@ -1,3 +1,4 @@
+using Trickster.Core.Artifacts;
 using Trickster.Core.Entropy;
 using Trickster.Core.Llm;
 
@@ -14,4 +15,7 @@ public interface IObfuscationContext
     EntropySource Entropy { get; }
     ILlmProvider Llm { get; }
     ITricksterLogger Logger { get; }
+
+    /// <summary>Typed blackboard for values passed between transforms.</summary>
+    IObfuscationArtifacts Artifacts { get; }
 }

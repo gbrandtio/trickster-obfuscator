@@ -3,6 +3,7 @@ using Trickster.Core;
 using Trickster.Core.Entropy;
 using Trickster.Core.Llm;
 using Trickster.DotNet;
+using Trickster.DotNet.Composition;
 using Trickster.Llm.Claude;
 
 if (args.Length < 2 || args[0] != "dotnet" || args[1] != "obfuscate")
@@ -148,35 +149,20 @@ static Action<TricksterConfig> OffOverlay(string csv)
     return c => ApplyMask(c, flag => !set.Contains(flag) && IsEnabled(c, flag));
 }
 
-static bool IsEnabled(TricksterConfig c, string flag) => flag switch
+static bool IsEnabled(TricksterConfig c, string flag)
 {
-    "rename" => c.Features.Rename.Enabled,
-    "strings" => c.Features.StringEncryption.Enabled,
-    "controlflow" => c.Features.ControlFlow.Enabled,
-    "misdirection" => c.Features.LlmMisdirection.Enabled,
-    "integrity" => c.Features.IntegrityChecks.Enabled,
-    "polymorphism" => c.Features.Polymorphism.Enabled,
-    "honeypots" => c.Features.Honeypots.Enabled,
-    "poison" => c.Features.DecompilerPoison.Enabled,
-    "antidebug" => c.Features.AntiDebug.Enabled,
-    "virtualize" => c.Features.Virtualization.Enabled,
-    "rasp" => c.Features.Rasp.Enabled,
-    _ => false,
-};
+    // "polymorphism" is not a tier (it selects the entropy source), so it is handled directly;
+    // every real tier is discovered from the registry by its Key.
+    if (flag == "polymorphism") return c.Features.Polymorphism.Enabled;
+    var module = DotNetTransformRegistry.Default.Modules.FirstOrDefault(m => m.Key == flag);
+    return module is not null && module.IsEnabled(c);
+}
 
 static void ApplyMask(TricksterConfig c, Func<string, bool> want)
 {
-    c.Features.Rename.Enabled = want("rename");
-    c.Features.StringEncryption.Enabled = want("strings");
-    c.Features.ControlFlow.Enabled = want("controlflow");
-    c.Features.LlmMisdirection.Enabled = want("misdirection");
-    c.Features.IntegrityChecks.Enabled = want("integrity");
+    foreach (var module in DotNetTransformRegistry.Default.Modules)
+        module.SetEnabled(c, want(module.Key));
     c.Features.Polymorphism.Enabled = want("polymorphism");
-    c.Features.Honeypots.Enabled = want("honeypots");
-    c.Features.DecompilerPoison.Enabled = want("poison");
-    c.Features.AntiDebug.Enabled = want("antidebug");
-    c.Features.Virtualization.Enabled = want("virtualize");
-    c.Features.Rasp.Enabled = want("rasp");
 }
 
 static void PrintUsage()

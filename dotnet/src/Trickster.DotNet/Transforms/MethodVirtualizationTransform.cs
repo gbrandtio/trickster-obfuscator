@@ -49,6 +49,7 @@ public sealed class MethodVirtualizationTransform : DotNetTransform
         var gen = context.Names;
         var entropy = context.Entropy;
 
+        context.Artifacts.TryGet(ArtifactKeys.PreservedDecoyTypes, out var preservedDecoys);
         var opcodeMap = BuildRandomizedOpcodeMap(entropy);
         int codeKey = entropy.NextInt(0x1000, 0x7FFF0000);
 
@@ -56,7 +57,7 @@ public sealed class MethodVirtualizationTransform : DotNetTransform
         foreach (var type in module.GetTypes().ToList())
         {
             if (type.Name == "<Module>" || type.IsInterface || type.HasGenericParameters) continue;
-            if (context.PreservedDecoyTypes.Contains(type)) continue;
+            if (preservedDecoys is not null && preservedDecoys.Contains(type)) continue;
 
             foreach (var method in type.Methods)
             {

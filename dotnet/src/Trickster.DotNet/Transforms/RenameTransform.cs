@@ -21,12 +21,15 @@ public sealed class RenameTransform : DotNetTransform
         bool keepPublic = context.Config.Features.Rename.KeepPublic;
         var excludes = CompilePatterns(context.Config.Features.Rename.Exclude);
         var gen = context.Names;
+        context.Artifacts.TryGet(ArtifactKeys.PreservedDecoyTypes, out var preservedDecoys);
+        var renameMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        context.Artifacts.Set(ArtifactKeys.RenameMap, renameMap);
         int types = 0, methods = 0, fields = 0, parameters = 0;
 
         foreach (var type in context.Module.GetTypes())
         {
             if (type.Name == "<Module>" || type.IsInterface) continue;
-            if (context.PreservedDecoyTypes.Contains(type)) continue;
+            if (preservedDecoys is not null && preservedDecoys.Contains(type)) continue;
 
             bool typeAttrExcluded = HasObfuscationExclusion(type, out bool applyToMembers);
             if (typeAttrExcluded && applyToMembers) continue;
@@ -34,7 +37,7 @@ public sealed class RenameTransform : DotNetTransform
             foreach (var method in type.Methods)
             {
                 if (!CanRenameMethod(method, keepPublic, excludes)) continue;
-                Record(context, $"M:{method.FullName}", out var newName, gen);
+                Record(renameMap, $"M:{method.FullName}", out var newName, gen);
                 method.Name = newName;
                 methods++;
                 foreach (var p in method.Parameters)
@@ -47,14 +50,14 @@ public sealed class RenameTransform : DotNetTransform
             foreach (var field in type.Fields)
             {
                 if (!CanRenameField(field, keepPublic, excludes)) continue;
-                Record(context, $"F:{field.FullName}", out var newName, gen);
+                Record(renameMap, $"F:{field.FullName}", out var newName, gen);
                 field.Name = newName;
                 fields++;
             }
 
             if (!typeAttrExcluded && CanRenameType(type, keepPublic, excludes))
             {
-                Record(context, $"T:{type.FullName}", out var newName, gen);
+                Record(renameMap, $"T:{type.FullName}", out var newName, gen);
                 type.Name = newName;
                 if (!type.IsNested) type.Namespace = string.Empty;
                 types++;
@@ -66,10 +69,10 @@ public sealed class RenameTransform : DotNetTransform
     }
 
     private static void Record(
-        DotNetObfuscationContext ctx, string key, out string newName, NameGenerator gen)
+        Dictionary<string, string> map, string key, out string newName, NameGenerator gen)
     {
         newName = gen.Next();
-        ctx.RenameMap[key] = newName;
+        map[key] = newName;
     }
 
     private static bool CanRenameType(

@@ -41,7 +41,12 @@ public sealed class HoneypotTransform : DotNetTransform
 
         var canary = "TRICKSTER-CANARY-" + Hex(context.Entropy, 16).ToUpperInvariant();
         AddConst(module, type, "BuildTag", canary);
-        context.Canaries.Add(canary);
+        if (!context.Artifacts.TryGet(ArtifactKeys.Canaries, out var canaries))
+        {
+            canaries = new List<string>();
+            context.Artifacts.Set(ArtifactKeys.Canaries, canaries);
+        }
+        canaries.Add(canary);
 
         module.Types.Add(type);
         context.Logger.Info($"honeypots: planted decoy secrets; canary={canary}");

@@ -31,8 +31,9 @@ public sealed class RaspTransform : DotNetTransform
         var module = context.Module;
         var gen = context.Names;
 
-        bool doIntegrity = opts.PeriodicIntegrityCheck && context.WholeImageVerifyMethod is not null;
-        if (opts.PeriodicIntegrityCheck && context.WholeImageVerifyMethod is null)
+        context.Artifacts.TryGet(ArtifactKeys.WholeImageVerifier, out var wholeImageVerifier);
+        bool doIntegrity = opts.PeriodicIntegrityCheck && wholeImageVerifier is not null;
+        if (opts.PeriodicIntegrityCheck && wholeImageVerifier is null)
             context.Logger.Warn(
                 "rasp: periodic integrity re-check requested but the integrity tier is disabled; " +
                 "skipping it (debugger/profiler checks still run)");
@@ -47,7 +48,7 @@ public sealed class RaspTransform : DotNetTransform
         // Exclude the shared whole-image verifier: Evaluate() -> CheckIntegrity() -> VerifyImage(),
         // so guarding VerifyImage with an Evaluate() prologue would recurse infinitely.
         bool keepPublic = context.Config.Features.Rename.KeepPublic;
-        var verifyMethod = context.WholeImageVerifyMethod;
+        var verifyMethod = wholeImageVerifier;
         var targets = module.GetTypes()
             .SelectMany(t => t.Methods)
             .Where(m => IsEligible(m, keepPublic) && !ReferenceEquals(m, verifyMethod))
@@ -124,7 +125,7 @@ public sealed class RaspTransform : DotNetTransform
                 gen.Next(), FieldAttributes.Public | FieldAttributes.Static, module.TypeSystem.Int64);
             monitor.Fields.Add(nextTicks);
             checkIntegrity = BuildCheckIntegrity(
-                module, gen.Next(), tickCount64, nextTicks, context.WholeImageVerifyMethod!,
+                module, gen.Next(), tickCount64, nextTicks, wholeImageVerifier!,
                 opts.IntegrityIntervalMs);
             monitor.Methods.Add(checkIntegrity);
         }

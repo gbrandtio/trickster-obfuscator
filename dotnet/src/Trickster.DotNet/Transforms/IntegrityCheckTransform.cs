@@ -30,7 +30,7 @@ public sealed class IntegrityCheckTransform : DotNetTransform
 
         var marker = new byte[ResourceSize];
         context.Entropy.NextBytes(marker);
-        context.WholeImageDigestMarker = marker;
+        context.Artifacts.Set(ArtifactKeys.WholeImageDigestMarker, marker);
         module.Resources.Add(new EmbeddedResource(
             ResourceName, ManifestResourceAttributes.Private, marker));
 
@@ -46,7 +46,7 @@ public sealed class IntegrityCheckTransform : DotNetTransform
         // Shared whole-image verifier (returns false on tamper / missing resource, true when
         // intact or unverifiable). The RASP tier reuses it for its periodic re-check.
         var verify = WholeImageVerify.EmitVerifyMethod(module, gen.Next(), gen.Next());
-        context.WholeImageVerifyMethod = verify;
+        context.Artifacts.Set(ArtifactKeys.WholeImageVerifier, verify);
 
         var type = new TypeDefinition(
             string.Empty, gen.Next(),

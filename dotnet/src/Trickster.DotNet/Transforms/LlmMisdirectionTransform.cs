@@ -30,6 +30,9 @@ public sealed class LlmMisdirectionTransform : DotNetTransform
         var usedTypeNames = new HashSet<string>(
             module.Types.Select(t => t.Name), StringComparer.Ordinal);
 
+        var preservedDecoys = new HashSet<TypeDefinition>();
+        context.Artifacts.Set(ArtifactKeys.PreservedDecoyTypes, preservedDecoys);
+
         for (int i = 0; i < count; i++)
         {
             var domain = context.Entropy.Pick(CoverStoryCorpus.Domains);
@@ -54,7 +57,7 @@ public sealed class LlmMisdirectionTransform : DotNetTransform
             }
 
             module.Types.Add(type);
-            context.PreservedDecoyTypes.Add(type);
+            preservedDecoys.Add(type);
         }
 
         context.Logger.Info($"llm-misdirection: injected {count} decoy type(s)");

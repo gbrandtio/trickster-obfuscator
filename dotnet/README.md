@@ -67,8 +67,8 @@ Each tier and each cross-cutting feature has its own document under `docs/`. Sta
 | Path | Contents |
 |---|---|
 | `src/Trickster.Cli` | Command-line entry point (`Program.cs`). |
-| `src/Trickster.Core` | Config model, pipeline, entropy source, LLM interface, `MisdirectionGuard`. |
-| `src/Trickster.DotNet` | Mono.Cecil engine and transforms. |
+| `src/Trickster.Core` | Config model, composition framework (modules, registry, chain, artifact blackboard), entropy source, LLM interface, `MisdirectionGuard`. |
+| `src/Trickster.DotNet` | Mono.Cecil engine, tier transforms + modules, and the obfuscation engine. |
 | `src/Trickster.Llm.Claude` | Anthropic API provider. |
 | `tests/Trickster.DotNet.Tests` | xUnit tests. |
 | `samples/` | `SampleLibrary` and `SampleConsumer` used for manual checks. |
