@@ -42,21 +42,9 @@ Some are on by default, others are opt-in.
 | Virtualization | off | Compiles eligible methods into custom VM bytecode. |
 | RASP | off | Runtime self-protection: re-checks for debuggers/profilers/tampering during execution. |
 
-Feature availability and exact behavior can vary by platform — see each implementation's
+Feature availability and exact behavior can vary by platform. See each implementation's
 README for specifics (e.g. [`dotnet/README.md`](dotnet/README.md)).
-
-## Quick start (.NET)
-
-Requires the **.NET 9 SDK**.
-
-```sh
-cd dotnet
-dotnet build
-dotnet run --project src/Trickster.Cli -- dotnet obfuscate MyLib.dll -o MyLib.obf.dll
-```
-
-See [`dotnet/README.md`](dotnet/README.md) for the full feature list, CLI options, and docs.
 
 ## License
 
-See [LICENSE](LICENSE).
+Trickster is released under the [MIT License](LICENSE).
