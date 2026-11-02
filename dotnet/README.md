@@ -1,13 +1,20 @@
 # Trickster (.NET)
 
 Trickster is an obfuscator for .NET assemblies. You point it at a compiled DLL and it
-rewrites the IL in place (using Mono.Cecil), making the binary much harder to read,
+rewrites the IL in place , making the binary much harder to read,
 decompile, and reverse-engineer. It is meant to protect your own code's intellectual
 property.
 
-It also has an optional **LLM misdirection** layer: it plants decoy types and false
-descriptions inside your binary so that AI-assisted analysis reaches confident but wrong
-conclusions.
+This obfuscator is specifically designed to counter (as much as possible) the recent trend
+of reverse engineering powered by LLMs (or make it more expensive).
+
+> [!WARNING]  
+> The target of this library is to make LLM-powered reverse engineering as expensive as
+> possible both for LLMs and human malicius actors.
+> With that being said, obfuscation should not be treated as a security measure, and users
+> of this library must be aware that a determined operator can obfuscate any binary, no matter
+> how the obfuscation was produced.
+
 
 ## Defensive scope
 
