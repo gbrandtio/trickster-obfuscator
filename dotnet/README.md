@@ -1,24 +1,83 @@
 # Trickster (.NET)
 
-Trickster is an obfuscator for .NET assemblies. It uses Mono.Cecil to rewrite the IL of a compiled
-DLL after it is built. Its purpose is to protect a library author's own intellectual property (IP).
+Trickster is an obfuscator for .NET assemblies. You point it at a compiled DLL and it
+rewrites the IL in place (using Mono.Cecil), making the binary much harder to read,
+decompile, and reverse-engineer. It is meant to protect your own code's intellectual
+property.
 
-It also includes an LLM misdirection layer. The goal of that layer is to make LLM-assisted reverse
-engineering produce confident but wrong conclusions.
+It also has an optional **LLM misdirection** layer: it plants decoy types and false
+descriptions inside your binary so that AI-assisted analysis reaches confident but wrong
+conclusions.
 
 ## Defensive scope
 
-Trickster is a defensive tool. The misdirection layer places decoys and false descriptions only inside
-the author's own binary, to mislead someone who analyzes that binary. It does **not** generate payloads
-for a third party's AI agent, and it does not write text that tries to make an agent ignore its
-instructions, run commands, or send data somewhere. `MisdirectionGuard`
-(`src/Trickster.Core/Llm/MisdirectionGuard.cs`) enforces this on all LLM output and all built-in corpus
-text; it is a pattern filter, not a complete classifier. See
+Trickster only ever modifies your own binary. The misdirection layer writes decoys and
+false descriptions into that binary to mislead someone analyzing it. It does **not** generate
+prompt-injection payloads or anything meant to hijack a third party's AI agent.
+`MisdirectionGuard` (`src/Trickster.Core/Llm/MisdirectionGuard.cs`) enforces this on every
+piece of generated and built-in text. See
 [docs/features/misdirection-guard.md](docs/features/misdirection-guard.md).
 
-## Requirements
+## Quick start
 
-- .NET 9 SDK. All projects target `net9.0`.
+Requires the **.NET 9 SDK**.
+
+```sh
+cd dotnet
+dotnet build
+```
+
+Obfuscate an assembly with the default protections:
+
+```sh
+dotnet run --project src/Trickster.Cli -- dotnet obfuscate MyLib.dll -o MyLib.obf.dll
+```
+
+Common options:
+
+```sh
+# Turn specific tiers on
+... obfuscate MyLib.dll -o out.dll --integrity --honeypots --virtualize
+
+# Run only a chosen set of tiers
+... obfuscate MyLib.dll -o out.dll --only rename,strings,controlflow
+
+# Reproducible build from a secret seed
+... obfuscate MyLib.dll -o out.dll --seed-file secret.key
+```
+
+By default the public API surface is preserved (`--keep-public`), so callers of your library
+keep working. Run `... dotnet obfuscate` with no arguments to print full usage, or see
+[docs/features/cli.md](docs/features/cli.md) for every flag.
+
+## Features
+
+Tiers marked **on** run by default; the rest are opt-in.
+
+| Tier | Default | What it does |
+|---|---|---|
+| `rename` | on | Renames types/members to hostile names; keeps the public API and your exclusions. |
+| `strings` | on | Encrypts string literals and injects a decryptor. |
+| `controlflow` | on | Indirect dispatch, basic-block flattening, and an opaque entry predicate. |
+| `misdirection` | on | Domain-named decoy types with false descriptions (anti-LLM). |
+| `integrity` | on | Module-initializer canary and a whole-image SHA-256 guard. |
+| `polymorphism` | on | Per-build variation / seed selection. |
+| `honeypots` | off | Fake secrets plus a leak canary. |
+| `poison` | off | Decompiler-hostile decoy members. |
+| `llmbloat` | off | Many inert decoy types that make the binary token-expensive for an LLM to analyze. |
+| `antidebug` | off | Benign `Debugger.IsAttached` probe; optional degrade-to-decoy mode. |
+| `virtualize` | off | Compiles eligible integer/boolean methods into custom VM bytecode. |
+| `rasp` | off | Runtime self-protection: re-checks for debuggers/profilers/tampering and degrades to inert fakes. |
+
+## Documentation
+
+Each tier and cross-cutting feature has its own doc under `docs/`. Start with
+[architecture](docs/features/architecture.md) for the pipeline and the robustness model.
+
+- Tiers: [docs/tiers/](docs/tiers/) — one document per tier above.
+- Features: [cli](docs/features/cli.md), [config & feature flags](docs/features/feature-flags-and-config.md),
+  [entropy & seeding](docs/features/entropy-and-seeding.md), [LLM provider](docs/features/llm-provider.md),
+  [misdirection guard](docs/features/misdirection-guard.md).
 
 ## Build and test
 
@@ -28,48 +87,17 @@ dotnet build
 dotnet test
 ```
 
-The test project (`tests/Trickster.DotNet.Tests`) obfuscates the sample library with each tier and
-checks that the sample program prints the same result, that string literals are removed, that seeded
-builds are reproducible, that the honeypot canary is emitted, and that the guard rejects payload text.
-
-## Documentation
-
-Each tier and each cross-cutting feature has its own document under `docs/`. Start with
-[architecture](docs/features/architecture.md) for the pipeline and the robustness model.
-
-### Tiers (`docs/tiers/`)
-
-| Tier | Default | Document |
-|---|---|---|
-| `rename` | on | [rename.md](docs/tiers/rename.md): rename types/members to hostile names, keep public API and exclusions |
-| `strings` | on | [string-encryption.md](docs/tiers/string-encryption.md): encrypt literals with multi-byte key schedule, inject a decryptor |
-| `controlflow` | on | [control-flow.md](docs/tiers/control-flow.md): indirect delegate dispatch, basic-block flattening, and entry opaque predicate |
-| `misdirection` | on | [llm-misdirection.md](docs/tiers/llm-misdirection.md): domain-named decoy types with false descriptions |
-| `integrity` | on | [integrity-checks.md](docs/tiers/integrity-checks.md): module-initializer canary and whole-image SHA-256 guard |
-| `polymorphism` | on | [polymorphism.md](docs/tiers/polymorphism.md): per-build variation / seed selection |
-| `honeypots` | off | [honeypots.md](docs/tiers/honeypots.md): fake secrets + leak canary |
-| `poison` | off | [decompiler-poison.md](docs/tiers/decompiler-poison.md): decompiler-hostile decoy members |
-| `llmbloat` | off | [llm-bloat.md](docs/tiers/llm-bloat.md): many inert decoy types that make the binary token-expensive to analyze with an LLM (passive, author's-own-binary only) |
-| `antidebug` | off | [anti-debug.md](docs/tiers/anti-debug.md): benign `Debugger.IsAttached` probe; optional `--anti-debug-decoy` degrade-to-decoy |
-| `virtualize` | off | [virtualization.md](docs/tiers/virtualization.md): compile integer/boolean methods into custom VM bytecode |
-| `rasp` | off | [rasp.md](docs/tiers/rasp.md): runtime self-protection — re-check for debuggers/profilers/tampering during execution, degrade to inert fakes |
-
-### Features (`docs/features/`)
-
-- [architecture.md](docs/features/architecture.md): layers, run flow, shared name generator, pass order, robustness model, honest limits.
-- [cli.md](docs/features/cli.md): the `trickster dotnet obfuscate` command, every flag, `--only`/`--off`, exit codes.
-- [feature-flags-and-config.md](docs/features/feature-flags-and-config.md): the `TricksterConfig` JSON schema, defaults, sub-options.
-- [entropy-and-seeding.md](docs/features/entropy-and-seeding.md): CSPRNG vs secret seed, reproducible builds, Kerckhoffs's principle.
-- [llm-provider.md](docs/features/llm-provider.md): the Claude provider, offline fallback, and what is (and is not) sent.
-- [misdirection-guard.md](docs/features/misdirection-guard.md): the defensive-scope boundary and the validator.
+The tests obfuscate the sample library with each tier and check that the sample program still
+prints the same result, that string literals are gone, that seeded builds are reproducible,
+that the honeypot canary is emitted, and that the guard rejects payload text.
 
 ## Project layout
 
 | Path | Contents |
 |---|---|
-| `src/Trickster.Cli` | Command-line entry point (`Program.cs`). |
-| `src/Trickster.Core` | Config model, composition framework (modules, registry, chain, artifact blackboard), entropy source, LLM interface, `MisdirectionGuard`. |
-| `src/Trickster.DotNet` | Mono.Cecil engine, tier transforms + modules, and the obfuscation engine. |
+| `src/Trickster.Cli` | Command-line entry point. |
+| `src/Trickster.Core` | Config model, composition framework, entropy source, LLM interface, `MisdirectionGuard`. |
+| `src/Trickster.DotNet` | Mono.Cecil engine and the tier transforms. |
 | `src/Trickster.Llm.Claude` | Anthropic API provider. |
 | `tests/Trickster.DotNet.Tests` | xUnit tests. |
-| `samples/` | `SampleLibrary` and `SampleConsumer` used for manual checks. |
+| `samples/` | `SampleLibrary` and `SampleConsumer` for manual checks. |
