@@ -1,0 +1,102 @@
+name: .NET Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  CLI_PROJECT: dotnet/src/Trickster.Cli/Trickster.Cli.csproj
+  CONFIGURATION: Release
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [linux-x64, linux-arm64, win-x64, osx-x64, osx-arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "number=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish "${CLI_PROJECT}" \
+            --configuration "${CONFIGURATION}" \
+            --runtime "${{ matrix.rid }}" \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version="${{ steps.version.outputs.number }}" \
+            --output "publish/${{ matrix.rid }}"
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          STAGE="trickster-${{ steps.version.outputs.tag }}-${{ matrix.rid }}"
+          cp -r "publish/${{ matrix.rid }}" "$STAGE"
+          cp LICENSE README.md "$STAGE"/ 2>/dev/null || true
+          if [[ "${{ matrix.rid }}" == win-* ]]; then
+            zip -r -j "dist/${STAGE}.zip" "$STAGE"
+          else
+            tar -czf "dist/${STAGE}.tar.gz" "$STAGE"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trickster-${{ matrix.rid }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: artifacts
+        run: sha256sum * > SHA256SUMS.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          name: ${{ github.event.inputs.version || github.ref_name }}
+          generate_release_notes: true
+          files: artifacts/*

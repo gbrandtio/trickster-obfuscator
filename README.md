@@ -1,5 +1,7 @@
 # Trickster
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Trickster is an obfuscator that protects your compiled code's intellectual property. It
 rewrites a built binary so it is much harder to read, decompile, and reverse-engineer, and
 it can plant decoys and false descriptions so that AI-assisted analysis reaches confident but
