@@ -15,29 +15,31 @@ the plaintext is absent from the static form of the assembly.
 ## Purpose / threat model
 
 Hardcoded strings (messages, format strings, keys, URLs) are the single richest source of meaning in
-a static view. This is the **information-removal** tier: a static analyzer — including an LLM reading
-the static assembly — sees ciphertext plus a decrypt call, not the text. To recover it the analyst
+a static view. This is the **information-removal** tier: a static analyzer (including an LLM reading
+the static assembly) sees ciphertext plus a decrypt call, not the text. To recover it the analyst
 must run the code (dynamic analysis), which is the accepted, higher-cost escape hatch.
 
 ## How it works
 
-One decryptor type (confusable name, static) is injected with a method
-`string Decrypt(byte[] data, byte key)` whose IL XORs each byte with the key and returns
-`Encoding.UTF8.GetString(data)`.
+One internal static decryptor type (confusable name) is injected with a `public static` method
+`string Decrypt(byte[] data, byte[] key)` (also given a confusable name) whose IL applies a
+position-dependent multi-byte XOR schedule (`data[i] = (byte)(data[i] ^ key[i % key.Length] ^ ((i * 31) & 0xFF))`)
+in place and returns `Encoding.UTF8.GetString(data)`.
 
-For every method body, the pass collects `ldstr` instructions with a non-empty operand. If a method
+For every method body (outside the injected decryptor type), the pass collects `ldstr` instructions with a non-empty operand. If a method
 has none, it is left untouched. Otherwise `SimplifyMacros()` is called (so short branches cannot
 overflow when the body grows), and each `ldstr` is rewritten **in place**: the instruction's opcode
-becomes `ldc.i4 <length>` (mutating in place keeps any branch that targeted the `ldstr` valid), then
-the byte-array construction (`newarr`, and `dup`/`ldc`/`ldc`/`stelem.i1` per byte), the key, and the
-`call` to the decryptor are inserted after it. `OptimizeMacros()` re-shortens branches afterward.
+becomes `ldc.i4 <cipher.Length>` (mutating in place keeps any branch that targeted the `ldstr` valid), then
+the ciphertext byte-array construction (`newarr`, and `dup`/`ldc`/`ldc`/`stelem.i1` per byte), the
+8-byte per-literal key array construction, and the `call` to the decryptor are inserted after it.
+`OptimizeMacros()` re-shortens branches afterward.
 
-`StringCipher.Encrypt` (build-time) applies the same single-byte XOR; the key is random per literal
-(1–255).
+`StringCipher.Encrypt` (build-time) applies the same 8-byte rolling XOR key schedule; each byte of the
+per-literal 8-byte key is drawn randomly from `context.Entropy` in `1-255`.
 
 ## Configuration
 
-- `--no-strings` — turn the tier off.
+- `--no-strings`: turn the tier off.
 - Config: `{ "features": { "stringEncryption": { "enabled": true } } }`.
 
 ## Example
@@ -56,9 +58,8 @@ specifically to fix branch-target and short-branch bugs found during testing.
 
 ## Limitations
 
-- Single-byte XOR per literal. This defeats casual scanning, not cryptanalysis: the decryptor and the
-  per-literal key both ship in the same assembly, so a reverser who runs the code recovers everything.
-  A multi-byte key schedule is a documented later refinement.
+- The decryptor method and the per-literal 8-byte keys both ship in the same assembly, so a reverser
+  who runs the code or emulates the decryptor call can still recover the strings dynamically.
 
 ## Related docs
 

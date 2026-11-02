@@ -52,7 +52,9 @@ public sealed class StringEncryptionTransform : DotNetTransform
         foreach (var ldstr in sites)
         {
             var text = (string)ldstr.Operand;
-            byte key = (byte)entropy.NextInt(1, 256);
+            var key = new byte[StringCipher.KeyLength];
+            for (int k = 0; k < key.Length; k++)
+                key[k] = (byte)entropy.NextInt(1, 256);
             var cipher = StringCipher.Encrypt(text, key);
 
             // Mutate the ldstr IN PLACE into the first replacement instruction so that any
@@ -69,7 +71,15 @@ public sealed class StringEncryptionTransform : DotNetTransform
                 tail.Add(il.Create(OpCodes.Ldc_I4, (int)cipher[i]));
                 tail.Add(il.Create(OpCodes.Stelem_I1));
             }
-            tail.Add(il.Create(OpCodes.Ldc_I4, (int)key));
+            tail.Add(il.Create(OpCodes.Ldc_I4, key.Length));
+            tail.Add(il.Create(OpCodes.Newarr, module.TypeSystem.Byte));
+            for (int k = 0; k < key.Length; k++)
+            {
+                tail.Add(il.Create(OpCodes.Dup));
+                tail.Add(il.Create(OpCodes.Ldc_I4, k));
+                tail.Add(il.Create(OpCodes.Ldc_I4, (int)key[k]));
+                tail.Add(il.Create(OpCodes.Stelem_I1));
+            }
             tail.Add(il.Create(OpCodes.Call, decryptor));
 
             var anchor = ldstr;
@@ -98,7 +108,8 @@ public sealed class StringEncryptionTransform : DotNetTransform
             module.TypeSystem.String);
         method.Parameters.Add(new ParameterDefinition(
             new ArrayType(module.TypeSystem.Byte)));
-        method.Parameters.Add(new ParameterDefinition(module.TypeSystem.Byte));
+        method.Parameters.Add(new ParameterDefinition(
+            new ArrayType(module.TypeSystem.Byte)));
 
         var getUtf8 = module.ImportReference(
             typeof(Encoding).GetProperty(nameof(Encoding.UTF8))!.GetGetMethod());
@@ -118,13 +129,25 @@ public sealed class StringEncryptionTransform : DotNetTransform
         il.Emit(OpCodes.Stloc, i);
         il.Emit(OpCodes.Br, test);
 
-        // data[i] = (byte)(data[i] ^ key)
+        // data[i] = (byte)(data[i] ^ key[i % key.Length] ^ ((i * 31) & 0xFF))
         il.Append(loop);                 // ldarg.0 (data, for stelem)
         il.Emit(OpCodes.Ldloc, i);
         il.Emit(OpCodes.Ldarg_0);
         il.Emit(OpCodes.Ldloc, i);
         il.Emit(OpCodes.Ldelem_U1);
         il.Emit(OpCodes.Ldarg_1);
+        il.Emit(OpCodes.Ldloc, i);
+        il.Emit(OpCodes.Ldarg_1);
+        il.Emit(OpCodes.Ldlen);
+        il.Emit(OpCodes.Conv_I4);
+        il.Emit(OpCodes.Rem);
+        il.Emit(OpCodes.Ldelem_U1);
+        il.Emit(OpCodes.Xor);
+        il.Emit(OpCodes.Ldloc, i);
+        il.Emit(OpCodes.Ldc_I4, 31);
+        il.Emit(OpCodes.Mul);
+        il.Emit(OpCodes.Ldc_I4, 255);
+        il.Emit(OpCodes.And);
         il.Emit(OpCodes.Xor);
         il.Emit(OpCodes.Conv_U1);
         il.Emit(OpCodes.Stelem_I1);

@@ -66,6 +66,8 @@ internal static class ObfuscationHarness
         c.Features.Honeypots.Enabled = true;
         c.Features.DecompilerPoison.Enabled = true;
         c.Features.AntiDebug.Enabled = true;
+        c.Features.Virtualization.Enabled = true;
+        c.Features.Rasp.Enabled = true;
         return c;
     }
 }

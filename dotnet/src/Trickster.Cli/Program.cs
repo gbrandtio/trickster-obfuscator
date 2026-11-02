@@ -15,37 +15,67 @@ var rest = args.Skip(2).ToArray();
 string? input = null, output = null, configPath = null, seedFile = null, mapPath = null, llm = null;
 var overrides = new List<Action<TricksterConfig>>();
 
-for (int i = 0; i < rest.Length; i++)
+try
 {
-    var a = rest[i];
-    switch (a)
+    for (int i = 0; i < rest.Length; i++)
     {
-        case "-o" or "--output": output = Next(rest, ref i); break;
-        case "--config": configPath = Next(rest, ref i); break;
-        case "--seed-file": seedFile = Next(rest, ref i); break;
-        case "--map": mapPath = Next(rest, ref i); break;
-        case "--llm": llm = Next(rest, ref i); break;
-        case "--keep-public": overrides.Add(c => c.Features.Rename.KeepPublic = true); break;
-        case "--no-keep-public": overrides.Add(c => c.Features.Rename.KeepPublic = false); break;
-        case "--no-rename": overrides.Add(c => c.Features.Rename.Enabled = false); break;
-        case "--no-strings": overrides.Add(c => c.Features.StringEncryption.Enabled = false); break;
-        case "--no-controlflow": overrides.Add(c => c.Features.ControlFlow.Enabled = false); break;
-        case "--no-misdirection": overrides.Add(c => c.Features.LlmMisdirection.Enabled = false); break;
-        case "--integrity": overrides.Add(c => c.Features.IntegrityChecks.Enabled = true); break;
-        case "--no-integrity": overrides.Add(c => c.Features.IntegrityChecks.Enabled = false); break;
-        case "--honeypots": overrides.Add(c => c.Features.Honeypots.Enabled = true); break;
-        case "--poison-decompilers": overrides.Add(c => c.Features.DecompilerPoison.Enabled = true); break;
-        case "--anti-debug": overrides.Add(c => c.Features.AntiDebug.Enabled = true); break;
-        case "--anti-debug-decoy":
-            overrides.Add(c => { c.Features.AntiDebug.Enabled = true; c.Features.AntiDebug.Decoy = true; });
-            break;
-        case "--only": overrides.Add(OnlyOverlay(Next(rest, ref i))); break;
-        case "--off": overrides.Add(OffOverlay(Next(rest, ref i))); break;
-        default:
-            if (a.StartsWith('-')) { Console.Error.WriteLine($"Unknown option: {a}"); return 2; }
-            input ??= a;
-            break;
+        var a = rest[i];
+        switch (a)
+        {
+            case "-o" or "--output": output = Next(rest, ref i); break;
+            case "--config": configPath = Next(rest, ref i); break;
+            case "--seed-file": seedFile = Next(rest, ref i); break;
+            case "--map": mapPath = Next(rest, ref i); break;
+            case "--llm": llm = Next(rest, ref i); break;
+            case "--keep-public": overrides.Add(c => c.Features.Rename.KeepPublic = true); break;
+            case "--no-keep-public": overrides.Add(c => c.Features.Rename.KeepPublic = false); break;
+            case "--rename-exclude":
+            {
+                var items = Next(rest, ref i)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                overrides.Add(c => c.Features.Rename.Exclude.AddRange(items));
+                break;
+            }
+            case "--no-rename": overrides.Add(c => c.Features.Rename.Enabled = false); break;
+            case "--no-strings": overrides.Add(c => c.Features.StringEncryption.Enabled = false); break;
+            case "--no-controlflow": overrides.Add(c => c.Features.ControlFlow.Enabled = false); break;
+            case "--no-flatten": overrides.Add(c => c.Features.ControlFlow.Flatten = false); break;
+            case "--no-indirect-dispatch": overrides.Add(c => c.Features.ControlFlow.IndirectDispatch = false); break;
+            case "--no-misdirection": overrides.Add(c => c.Features.LlmMisdirection.Enabled = false); break;
+            case "--integrity": overrides.Add(c => c.Features.IntegrityChecks.Enabled = true); break;
+            case "--no-integrity": overrides.Add(c => c.Features.IntegrityChecks.Enabled = false); break;
+            case "--honeypots": overrides.Add(c => c.Features.Honeypots.Enabled = true); break;
+            case "--poison-decompilers": overrides.Add(c => c.Features.DecompilerPoison.Enabled = true); break;
+            case "--anti-debug": overrides.Add(c => c.Features.AntiDebug.Enabled = true); break;
+            case "--anti-debug-decoy":
+                overrides.Add(c => { c.Features.AntiDebug.Enabled = true; c.Features.AntiDebug.Decoy = true; });
+                break;
+            case "--virtualize": overrides.Add(c => c.Features.Virtualization.Enabled = true); break;
+            case "--no-virtualize": overrides.Add(c => c.Features.Virtualization.Enabled = false); break;
+            case "--rasp": overrides.Add(c => c.Features.Rasp.Enabled = true); break;
+            case "--no-rasp": overrides.Add(c => c.Features.Rasp.Enabled = false); break;
+            case "--no-rasp-native": overrides.Add(c => c.Features.Rasp.NativeDebuggerCheck = false); break;
+            case "--rasp-interval":
+            {
+                var v = Next(rest, ref i);
+                if (!int.TryParse(v, out var ms) || ms < 0)
+                    throw new ArgumentException($"Invalid --rasp-interval value: {v}");
+                overrides.Add(c => c.Features.Rasp.IntegrityIntervalMs = ms);
+                break;
+            }
+            case "--only": overrides.Add(OnlyOverlay(Next(rest, ref i))); break;
+            case "--off": overrides.Add(OffOverlay(Next(rest, ref i))); break;
+            default:
+                if (a.StartsWith('-')) { Console.Error.WriteLine($"Unknown option: {a}"); return 2; }
+                input ??= a;
+                break;
+        }
     }
+}
+catch (ArgumentException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    return 2;
 }
 
 if (input is null) { Console.Error.WriteLine("Missing input assembly."); return 2; }
@@ -129,6 +159,8 @@ static bool IsEnabled(TricksterConfig c, string flag) => flag switch
     "honeypots" => c.Features.Honeypots.Enabled,
     "poison" => c.Features.DecompilerPoison.Enabled,
     "antidebug" => c.Features.AntiDebug.Enabled,
+    "virtualize" => c.Features.Virtualization.Enabled,
+    "rasp" => c.Features.Rasp.Enabled,
     _ => false,
 };
 
@@ -143,6 +175,8 @@ static void ApplyMask(TricksterConfig c, Func<string, bool> want)
     c.Features.Honeypots.Enabled = want("honeypots");
     c.Features.DecompilerPoison.Enabled = want("poison");
     c.Features.AntiDebug.Enabled = want("antidebug");
+    c.Features.Virtualization.Enabled = want("virtualize");
+    c.Features.Rasp.Enabled = want("rasp");
 }
 
 static void PrintUsage()
@@ -154,19 +188,27 @@ Usage:
   trickster dotnet obfuscate <input.dll> -o <output.dll> [options]
 
 Options:
-  -o, --output <path>     Output assembly path (defaults to overwriting input)
-  --config <path>         JSON config file
-  --seed-file <path>      Secret seed for a reproducible build (else non-deterministic)
-  --map <path>            Write the rename map + result as JSON (debugging only)
-  --llm <claude|off>      Provider for decoy generation (default off; uses ANTHROPIC_API_KEY)
-  --keep-public           Preserve the public API surface (default on)
-  --no-keep-public        Also rename the public API surface
-  --no-rename --no-strings --no-controlflow --no-misdirection
+  -o, --output <path>        Output assembly path (defaults to overwriting input)
+  --config <path>            JSON config file
+  --seed-file <path>         Secret seed for a reproducible build (else non-deterministic)
+  --map <path>               Write the rename map + result as JSON (debugging only)
+  --llm <claude|off>         Provider for decoy generation (default off; uses ANTHROPIC_API_KEY)
+  --keep-public              Preserve the public API surface (default on)
+  --no-keep-public           Also rename the public API surface
+  --rename-exclude <a,b,...> Exclude matching symbols or wildcard patterns from renaming
+  --no-rename --no-strings --no-controlflow --no-flatten --no-indirect-dispatch --no-misdirection
   --integrity --no-integrity --honeypots --poison-decompilers --anti-debug
-  --anti-debug-decoy      Anti-debug + degrade-to-decoy: eligible methods divert to inert
-                          decoy logic while a debugger is attached (implies --anti-debug)
-  --only <a,b,...>        Enable only these tiers
-  --off  <a,b,...>        Disable these tiers
+  --anti-debug-decoy         Anti-debug + degrade-to-decoy: eligible methods divert to inert
+                             decoy logic while a debugger is attached (implies --anti-debug)
+  --virtualize               Compile eligible integer/boolean methods into custom VM bytecode
+  --no-virtualize            Disable method virtualization
+  --rasp                     Runtime self-protection: re-check for debuggers/profilers/tampering
+                             during execution and degrade guarded methods to inert fakes
+  --no-rasp                  Disable runtime self-protection
+  --no-rasp-native           Keep RASP but disable its native (Windows/Linux) debugger probes
+  --rasp-interval <ms>       Min milliseconds between RASP whole-image re-hashes (default 5000)
+  --only <a,b,...>           Enable only these tiers
+  --off  <a,b,...>           Disable these tiers
   Tier names: rename, strings, controlflow, misdirection, integrity,
-              polymorphism, honeypots, poison, antidebug");
+              polymorphism, honeypots, poison, antidebug, virtualize, rasp");
 }

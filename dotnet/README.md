@@ -41,24 +41,26 @@ Each tier and each cross-cutting feature has its own document under `docs/`. Sta
 
 | Tier | Default | Document |
 |---|---|---|
-| `rename` | on | [rename.md](docs/tiers/rename.md) — rename types/members to hostile names, keep public API |
-| `strings` | on | [string-encryption.md](docs/tiers/string-encryption.md) — encrypt literals, inject a decryptor |
-| `controlflow` | on | [control-flow.md](docs/tiers/control-flow.md) — always-true opaque predicate + decoy throw |
-| `misdirection` | on | [llm-misdirection.md](docs/tiers/llm-misdirection.md) — decoy types with false descriptions |
-| `integrity` | on | [integrity-checks.md](docs/tiers/integrity-checks.md) — module-initializer canary-hash guard |
-| `polymorphism` | on | [polymorphism.md](docs/tiers/polymorphism.md) — per-build variation / seed selection |
-| `honeypots` | off | [honeypots.md](docs/tiers/honeypots.md) — fake secrets + leak canary |
-| `poison` | off | [decompiler-poison.md](docs/tiers/decompiler-poison.md) — decompiler-hostile decoy members |
-| `antidebug` | off | [anti-debug.md](docs/tiers/anti-debug.md) — benign `Debugger.IsAttached` probe; optional `--anti-debug-decoy` degrade-to-decoy |
+| `rename` | on | [rename.md](docs/tiers/rename.md): rename types/members to hostile names, keep public API and exclusions |
+| `strings` | on | [string-encryption.md](docs/tiers/string-encryption.md): encrypt literals with multi-byte key schedule, inject a decryptor |
+| `controlflow` | on | [control-flow.md](docs/tiers/control-flow.md): indirect delegate dispatch, basic-block flattening, and entry opaque predicate |
+| `misdirection` | on | [llm-misdirection.md](docs/tiers/llm-misdirection.md): domain-named decoy types with false descriptions |
+| `integrity` | on | [integrity-checks.md](docs/tiers/integrity-checks.md): module-initializer canary and whole-image SHA-256 guard |
+| `polymorphism` | on | [polymorphism.md](docs/tiers/polymorphism.md): per-build variation / seed selection |
+| `honeypots` | off | [honeypots.md](docs/tiers/honeypots.md): fake secrets + leak canary |
+| `poison` | off | [decompiler-poison.md](docs/tiers/decompiler-poison.md): decompiler-hostile decoy members |
+| `antidebug` | off | [anti-debug.md](docs/tiers/anti-debug.md): benign `Debugger.IsAttached` probe; optional `--anti-debug-decoy` degrade-to-decoy |
+| `virtualize` | off | [virtualization.md](docs/tiers/virtualization.md): compile integer/boolean methods into custom VM bytecode |
+| `rasp` | off | [rasp.md](docs/tiers/rasp.md): runtime self-protection — re-check for debuggers/profilers/tampering during execution, degrade to inert fakes |
 
 ### Features (`docs/features/`)
 
-- [architecture.md](docs/features/architecture.md) — layers, run flow, shared name generator, pass order, robustness model, honest limits.
-- [cli.md](docs/features/cli.md) — the `trickster dotnet obfuscate` command, every flag, `--only`/`--off`, exit codes.
-- [feature-flags-and-config.md](docs/features/feature-flags-and-config.md) — the `TricksterConfig` JSON schema, defaults, sub-options.
-- [entropy-and-seeding.md](docs/features/entropy-and-seeding.md) — CSPRNG vs secret seed, reproducible builds, Kerckhoffs's principle.
-- [llm-provider.md](docs/features/llm-provider.md) — the Claude provider, offline fallback, and what is (and is not) sent.
-- [misdirection-guard.md](docs/features/misdirection-guard.md) — the defensive-scope boundary and the validator.
+- [architecture.md](docs/features/architecture.md): layers, run flow, shared name generator, pass order, robustness model, honest limits.
+- [cli.md](docs/features/cli.md): the `trickster dotnet obfuscate` command, every flag, `--only`/`--off`, exit codes.
+- [feature-flags-and-config.md](docs/features/feature-flags-and-config.md): the `TricksterConfig` JSON schema, defaults, sub-options.
+- [entropy-and-seeding.md](docs/features/entropy-and-seeding.md): CSPRNG vs secret seed, reproducible builds, Kerckhoffs's principle.
+- [llm-provider.md](docs/features/llm-provider.md): the Claude provider, offline fallback, and what is (and is not) sent.
+- [misdirection-guard.md](docs/features/misdirection-guard.md): the defensive-scope boundary and the validator.
 
 ## Project layout
 

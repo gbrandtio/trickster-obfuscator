@@ -7,7 +7,7 @@ namespace Trickster.DotNet.Transforms;
 /// <summary>
 /// Plants a decoy "secrets" type full of fake-but-valuable-looking constants to draw an
 /// analyst's attention away from the real mechanism, plus a unique canary constant. The
-/// canary is surfaced to the caller so the author can search for it in the wild — if it ever
+/// canary is surfaced to the caller so the author can search for it in the wild; if it ever
 /// appears downstream, someone shipped against the decoy. All values are inert and fake.
 /// </summary>
 public sealed class HoneypotTransform : DotNetTransform

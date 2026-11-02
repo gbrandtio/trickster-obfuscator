@@ -11,7 +11,7 @@ namespace Trickster.DotNet.Transforms;
 /// Opt-in, off by default. Installs a module-initializer probe that reads
 /// <see cref="Debugger.IsAttached"/>.
 /// <para>
-/// In its default (benign) mode it reads the flag and discards it — no crash, no machine impact,
+/// In its default (benign) mode it reads the flag and discards it: no crash, no machine impact,
 /// no AV/EDR evasion; it only raises the cost of casual dynamic inspection.
 /// </para>
 /// <para>
@@ -20,8 +20,8 @@ namespace Trickster.DotNet.Transforms;
 /// so that, when a debugger was attached at load, they divert into an inert decoy routine and
 /// return a provably inert fake value instead of running their real body. To keep the fake value
 /// guaranteed non-crashing, only methods returning a value type (diverted to <c>default(T)</c>)
-/// or <c>string</c> (diverted to a fake literal) are eligible; reference-returning methods —
-/// including <c>Task</c>/async and iterator methods — are left untouched so the decoy can never
+/// or <c>string</c> (diverted to a fake literal) are eligible; reference-returning methods
+/// (including <c>Task</c>/async and iterator methods) are left untouched so the decoy can never
 /// hand back a <c>null</c> that faults a caller. This is bounded software-protection behavior: it
 /// alters only the program's own return values under observation, takes no destructive action,
 /// touches no machine state, and performs no sandbox/AV/EDR evasion. With no debugger attached,
@@ -142,7 +142,7 @@ public sealed class AntiDebugTransform : DotNetTransform
     /// <summary>
     /// Prepends the decoy guard at the method entry, using the SimplifyMacros/InsertBefore pattern
     /// so existing branch targets and try/catch regions stay valid. The divert returns a fake
-    /// literal for a <c>string</c> return, otherwise <c>default(T)</c> (a value type) — both are
+    /// literal for a <c>string</c> return, otherwise <c>default(T)</c> (a value type); both are
     /// guaranteed non-null, so no caller can be faulted by the decoy path.
     /// </summary>
     private static void GuardMethod(

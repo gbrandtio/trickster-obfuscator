@@ -5,7 +5,7 @@ namespace Trickster.DotNet.Naming;
 
 /// <summary>
 /// Produces hostile, hard-to-read identifiers driven by the entropy source. Names are built
-/// from a pool of visually confusable Unicode letters (homoglyphs of l / I / o), so distinct
+/// from a pool of visually confusable Unicode letters (homoglyphs of l / I), so distinct
 /// identifiers look identical to a human and defeat eyeball mapping. Uniqueness is tracked so
 /// no two generated names collide. The IL/CLR accepts these names even though C# would not,
 /// which also degrades decompiler output.
@@ -28,7 +28,7 @@ public sealed class NameGenerator
 
     public NameGenerator(EntropySource entropy) => _entropy = entropy;
 
-    /// <summary>A fresh unique confusable identifier, 8–16 characters long.</summary>
+    /// <summary>A fresh unique confusable identifier, 8-16 characters long.</summary>
     public string Next()
     {
         for (int attempt = 0; attempt < 1000; attempt++)

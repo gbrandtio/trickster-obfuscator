@@ -29,6 +29,14 @@ public class BehaviorPreservationTests
             Only(c, "antidebug");
             c.Features.AntiDebug.Decoy = true;
         }) };
+        yield return new object[] { "virtualize", Mutate(c => Only(c, "virtualize")) };
+        yield return new object[] { "rasp", Mutate(c => Only(c, "rasp")) };
+        // RASP + integrity so the periodic whole-image re-check is wired and exercised.
+        yield return new object[] { "rasp-integrity", Mutate(c =>
+        {
+            Only(c, "rasp");
+            c.Features.IntegrityChecks.Enabled = true;
+        }) };
     }
 
     [Theory]
@@ -63,7 +71,8 @@ public class BehaviorPreservationTests
         var f = c.Features;
         f.Rename.Enabled = f.StringEncryption.Enabled = f.ControlFlow.Enabled =
             f.LlmMisdirection.Enabled = f.IntegrityChecks.Enabled =
-            f.Honeypots.Enabled = f.DecompilerPoison.Enabled = f.AntiDebug.Enabled = false;
+            f.Honeypots.Enabled = f.DecompilerPoison.Enabled = f.AntiDebug.Enabled =
+            f.Virtualization.Enabled = false;
         switch (tier)
         {
             case "rename": f.Rename.Enabled = true; break;
@@ -74,6 +83,8 @@ public class BehaviorPreservationTests
             case "honeypots": f.Honeypots.Enabled = true; break;
             case "poison": f.DecompilerPoison.Enabled = true; break;
             case "antidebug": f.AntiDebug.Enabled = true; break;
+            case "virtualize": f.Virtualization.Enabled = true; break;
+            case "rasp": f.Rasp.Enabled = true; break;
         }
     }
 }

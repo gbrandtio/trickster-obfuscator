@@ -24,17 +24,19 @@ downstream, someone shipped against the decoy.
 
 ## How it works
 
-The pass injects one decoy type (confusable name) with a `[Description]` cover story and these
-`const` string fields:
+The pass injects one internal static decoy type (confusable name) with a `[Description]` cover story
+(drawn from `CoverStoryCorpus` for the `"configuration"` domain) and these `public const string` fields:
 
-- `ApiKey` = `"tkn_" + <24 random hex bytes>`
-- `AesKey` = `<32 random hex bytes>`
-- `SigningSecret` = `<20 random hex bytes>`
-- `BuildTag` = `"TRICKSTER-CANARY-" + <16 random hex bytes, upper-case>`
+- `ApiKey` = `"tkn_" + <24 random bytes as 48 lowercase hex chars>`
+- `AesKey` = `<32 random bytes as 64 lowercase hex chars>`
+- `SigningSecret` = `<20 random bytes as 40 lowercase hex chars>`
+- `BuildTag` = `"TRICKSTER-CANARY-" + <16 random bytes as 32 uppercase hex chars>`
 
 The `BuildTag` canary is added to `context.Canaries`, which the CLI prints after a run so the author
 can record it and search for it in the wild. The `ApiKey` prefix is deliberately `tkn_` rather than a
-real provider format, so the decoy does not trip downstream secret scanners.
+real provider format, so the decoy does not trip downstream secret scanners. (Because the fields are
+`public`, `rename` preserves their names `ApiKey`, `AesKey`, `SigningSecret`, and `BuildTag` when
+`keepPublic` is true, and renames them when `--no-keep-public` is set.)
 
 ## Configuration
 

@@ -7,7 +7,7 @@ namespace Trickster.DotNet.Transforms;
 /// <summary>
 /// Adds inert decoy members whose names are valid CLR metadata but not valid C#
 /// identifiers (they mimic compiler-generated names). Common decompilers render these with
-/// awkward escaping or give up, so the analyst's tools — not just comments — mislead.
+/// awkward escaping or give up, so the analyst's toolchain itself becomes a source of misdirection.
 /// Members are unreferenced and do nothing, and output is validated by the round-trip load
 /// test. Higher runtime-validity risk, so this tier is opt-in.
 /// </summary>

@@ -26,7 +26,7 @@ public static partial class MisdirectionGuard
         return true;
     }
 
-    /// <summary>Returns the text if safe, otherwise throws — generation must not smuggle payloads.</summary>
+    /// <summary>Returns the text if safe, otherwise throws; generation must not smuggle payloads.</summary>
     public static string Require(string text)
     {
         if (!IsSafe(text))

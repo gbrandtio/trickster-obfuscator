@@ -177,8 +177,132 @@ public class TierBehaviorTests
         var f = c.Features;
         f.Rename.Enabled = f.StringEncryption.Enabled = f.ControlFlow.Enabled =
             f.LlmMisdirection.Enabled = f.IntegrityChecks.Enabled =
-            f.Honeypots.Enabled = f.DecompilerPoison.Enabled = f.AntiDebug.Enabled = false;
-        if (tier == "antidebug") f.AntiDebug.Enabled = true;
+            f.Honeypots.Enabled = f.DecompilerPoison.Enabled = f.AntiDebug.Enabled =
+            f.Virtualization.Enabled = false;
+        switch (tier)
+        {
+            case "rename": f.Rename.Enabled = true; break;
+            case "strings": f.StringEncryption.Enabled = true; break;
+            case "controlflow": f.ControlFlow.Enabled = true; break;
+            case "misdirection": f.LlmMisdirection.Enabled = true; break;
+            case "integrity": f.IntegrityChecks.Enabled = true; break;
+            case "honeypots": f.Honeypots.Enabled = true; break;
+            case "poison": f.DecompilerPoison.Enabled = true; break;
+            case "antidebug": f.AntiDebug.Enabled = true; break;
+            case "virtualize": f.Virtualization.Enabled = true; break;
+            case "rasp": f.Rasp.Enabled = true; break;
+        }
+    }
+
+    [Fact]
+    public void StringEncryption_UsesMultiByteKeyDecryptor()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "strings");
+        var path = ObfuscationHarness.Obfuscate(c, "strenc-multibyte");
+
+        using var asm = AssemblyDefinition.ReadAssembly(path);
+        bool hasMultiByteDecryptor = asm.MainModule.Types
+            .SelectMany(t => t.Methods)
+            .Any(m => m.IsStatic
+                      && m.ReturnType.MetadataType == MetadataType.String
+                      && m.Parameters.Count == 2
+                      && m.Parameters[0].ParameterType is ArrayType a0
+                      && a0.ElementType.MetadataType == MetadataType.Byte
+                      && m.Parameters[1].ParameterType is ArrayType a1
+                      && a1.ElementType.MetadataType == MetadataType.Byte);
+        Assert.True(hasMultiByteDecryptor, "decryptor should accept (byte[] data, byte[] key)");
+    }
+
+    [Fact]
+    public void Rename_RespectsExcludeSkipList()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "rename");
+        c.Features.Rename.Exclude.Add("Classify");
+
+        var path = ObfuscationHarness.Obfuscate(c, "rename-exclude");
+        using var asm = AssemblyDefinition.ReadAssembly(path);
+        var demo = asm.MainModule.GetType("SampleLibrary.Demo")!;
+        Assert.Contains(demo.Methods, m => m.Name == "Classify");
+        Assert.DoesNotContain(demo.Methods, m => m.Name == "SumTo");
+    }
+
+    [Fact]
+    public void Misdirection_UsesSuggestDecoyNames_AndPreservesDecoyNamesUnderRename()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "misdirection");
+        c.Features.Rename.Enabled = true;
+
+        var path = ObfuscationHarness.Obfuscate(c, "misdirection-names");
+        using var asm = AssemblyDefinition.ReadAssembly(path);
+        var decoys = asm.MainModule.Types.Where(t => t.Namespace == "Trickster.Decoys").ToList();
+        Assert.NotEmpty(decoys);
+        Assert.All(decoys, d => Assert.True(d.Name.All(ch => char.IsAsciiLetterOrDigit(ch)),
+            $"expected readable ASCII decoy name from SuggestDecoyNamesAsync, got {d.Name}"));
+    }
+
+    [Fact]
+    public void ControlFlow_FlattensAndIndirectDispatches()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "controlflow");
+        var path = ObfuscationHarness.Obfuscate(c, "cf-full");
+
+        using var asm = AssemblyDefinition.ReadAssembly(path);
+        bool hasSwitch = asm.MainModule.Types
+            .SelectMany(t => t.Methods)
+            .Where(m => m.HasBody)
+            .SelectMany(m => m.Body.Instructions)
+            .Any(i => i.OpCode == OpCodes.Switch);
+        Assert.True(hasSwitch, "expected control-flow flattening to emit a switch dispatcher");
+
+        bool hasDelegateSlot = asm.MainModule.Types
+            .SelectMany(t => t.Fields)
+            .Any(f => f.IsStatic && f.FieldType.FullName.StartsWith("System.Func`"));
+        Assert.True(hasDelegateSlot, "expected indirect dispatch to emit static Func<> delegate fields");
+    }
+
+    [Fact]
+    public void Virtualization_CompilesEligibleMethodsToVmBytecode()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "virtualize");
+        var path = ObfuscationHarness.Obfuscate(c, "vm");
+
+        Assert.Equal(SampleLibrary.Demo.Run(5), ObfuscationHarness.InvokeRun(path, 5));
+
+        using var asm = AssemblyDefinition.ReadAssembly(path);
+        var demo = asm.MainModule.GetType("SampleLibrary.Demo")!;
+        var sumTo = demo.Methods.First(m => m.Name == "SumTo");
+        // SumTo is now a VM stub: no local loop variables, just array construction + interpreter call.
+        Assert.Empty(sumTo.Body.Variables);
+        Assert.Contains(sumTo.Body.Instructions, i => i.OpCode == OpCodes.Call);
+    }
+
+    [Fact]
+    public void Integrity_DetectsWholeImageTampering()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "integrity");
+        var path = ObfuscationHarness.Obfuscate(c, "integrity-tamper");
+
+        // Untampered binary loads and runs cleanly.
+        Assert.Equal(SampleLibrary.Demo.Run(5), ObfuscationHarness.InvokeRun(path, 5));
+
+        // Flip a byte inside the "Demo result for" user-string heap entry on disk so the PE
+        // structure remains loadable by the CLR, but the whole-image SHA-256 no longer matches.
+        var bytes = File.ReadAllBytes(path);
+        var needle = System.Text.Encoding.Unicode.GetBytes("Demo result for");
+        int pos = bytes.AsSpan().IndexOf(needle);
+        Assert.True(pos >= 0, "expected to locate string in untampered binary");
+        bytes[pos] ^= 0x01;
+        File.WriteAllBytes(path, bytes);
+
+        var ex = Assert.Throws<TargetInvocationException>(() => ObfuscationHarness.InvokeRun(path, 5));
+        Assert.IsType<TypeInitializationException>(ex.InnerException);
+        Assert.IsType<InvalidOperationException>(ex.InnerException!.InnerException);
     }
 
     [Theory]
@@ -188,5 +312,112 @@ public class TierBehaviorTests
     public void MisdirectionGuard_RejectsImperativePayloads(string text, bool safe)
     {
         Assert.Equal(safe, MisdirectionGuard.IsSafe(text));
+    }
+
+    [Fact]
+    public void Rasp_InstallsRuntimeMonitorAndGuards()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "rasp"); // rename off -> sample names preserved
+        var path = ObfuscationHarness.Obfuscate(c, "rasp-install");
+
+        using var asm = AssemblyDefinition.ReadAssembly(path);
+        var module = asm.MainModule;
+
+        // The monitor re-reads Debugger.IsAttached live (unlike the one-shot anti-debug probe).
+        bool probeFound = module.Types
+            .SelectMany(t => t.Methods)
+            .Where(m => m.HasBody)
+            .SelectMany(m => m.Body.Instructions)
+            .Any(i => (i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt)
+                      && i.Operand is MethodReference mr && mr.Name == "get_IsAttached");
+        Assert.True(probeFound, "RASP monitor should read Debugger.IsAttached");
+
+        // An eligible private method opens with the `if (Evaluate()) ...` guard.
+        var classify = module.GetType("SampleLibrary.Demo")?
+            .Methods.FirstOrDefault(m => m.Name == "Classify");
+        Assert.NotNull(classify);
+        var body = classify!.Body.Instructions;
+        Assert.Equal(OpCodes.Call, body[0].OpCode);
+        Assert.True(body[1].OpCode == OpCodes.Brfalse || body[1].OpCode == OpCodes.Brfalse_S,
+            $"expected a brfalse guard, got {body[1].OpCode}");
+    }
+
+    [Fact]
+    public void Rasp_DivertsToInertFake_WhenCompromised()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "rasp");
+        var path = ObfuscationHarness.Obfuscate(c, "rasp-compromised");
+
+        var alc = new AssemblyLoadContext("rasp-decoy", isCollectible: true);
+        try
+        {
+            var asm = alc.LoadFromAssemblyPath(path);
+
+            // Simulate a runtime detection by latching the injected "compromised" flag (the only
+            // injected static bool when just this tier is enabled).
+            var flag = asm.GetTypes()
+                .SelectMany(t => t.GetFields(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+                .FirstOrDefault(f => f.IsStatic && f.FieldType == typeof(bool));
+            Assert.NotNull(flag);
+            flag!.SetValue(null, true);
+
+            var demo = asm.GetType("SampleLibrary.Demo")!;
+            var classify = demo.GetMethod("Classify", BindingFlags.NonPublic | BindingFlags.Static)!;
+            var fake = (string?)classify.Invoke(null, new object[] { 2 });
+            Assert.False(string.IsNullOrEmpty(fake), "decoy return must be a non-null fake string");
+            Assert.NotEqual("even", fake);
+            Assert.NotEqual("odd", fake);
+
+            var run = demo.GetMethod("Run", BindingFlags.Public | BindingFlags.Static)!;
+            var result = (string?)run.Invoke(null, new object[] { 5 });
+            Assert.False(string.IsNullOrEmpty(result));
+        }
+        finally
+        {
+            alc.Unload();
+        }
+    }
+
+    [Fact]
+    public void Rasp_PeriodicIntegrity_DetectsRuntimeTampering()
+    {
+        // RASP + integrity, interval 0 so every guarded call re-verifies the on-disk image.
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "rasp");
+        c.Features.IntegrityChecks.Enabled = true;
+        c.Features.Rasp.IntegrityIntervalMs = 0;
+        var path = ObfuscationHarness.Obfuscate(c, "rasp-periodic");
+
+        var alc = new AssemblyLoadContext("rasp-periodic", isCollectible: true);
+        try
+        {
+            var asm = alc.LoadFromAssemblyPath(path);
+            var demo = asm.GetType("SampleLibrary.Demo")!;
+            var classify = demo.GetMethod("Classify", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+            // Untampered: the load-time integrity guard passed and RASP sees an intact image.
+            Assert.Equal("even", (string?)classify.Invoke(null, new object[] { 2 }));
+
+            // Tamper the on-disk image AFTER load (flip a byte in the user-string heap). The
+            // one-shot load guard has already run; only RASP's periodic re-check can catch this.
+            var bytes = File.ReadAllBytes(path);
+            var needle = System.Text.Encoding.Unicode.GetBytes("Demo result for");
+            int pos = bytes.AsSpan().IndexOf(needle);
+            Assert.True(pos >= 0, "expected to locate string in untampered binary");
+            bytes[pos] ^= 0x01;
+            File.WriteAllBytes(path, bytes);
+
+            var after = (string?)classify.Invoke(null, new object[] { 2 });
+            Assert.False(string.IsNullOrEmpty(after));
+            Assert.NotEqual("even", after);
+            Assert.NotEqual("odd", after);
+        }
+        finally
+        {
+            alc.Unload();
+        }
     }
 }

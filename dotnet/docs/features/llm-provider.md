@@ -16,16 +16,19 @@ full offline fallback.
 - `Task<IReadOnlyList<string>> SuggestDecoyNamesAsync(string fakeDomainHint, int count, ...)`
 - `Task<string> GenerateCoverStoryAsync(string fakeDomainHint, ...)`
 
-The [misdirection tier](../tiers/llm-misdirection.md) calls `GenerateCoverStoryAsync` (one request per
-decoy type). Decoy **names** come from the shared `NameGenerator`, not from the provider, so
-`SuggestDecoyNamesAsync` is part of the interface but not on the v1 misdirection path.
+The [misdirection tier](../tiers/llm-misdirection.md) calls both `GenerateCoverStoryAsync` (one request
+per decoy type) and `SuggestDecoyNamesAsync` (one request per decoy type for the type and its methods)
+when `IsEnabled` is `true`; when `IsEnabled` is `false`, it draws stories from `CoverStoryCorpus` and
+decoy names from `new OfflineProvider(context.Entropy).SuggestDecoyNamesAsync(...)`.
 
 ## Offline provider (default)
 
-`OfflineProvider` needs no network and no key. `IsEnabled` is `false`; it assembles names from a
-`Prefixes × Roles` template and cover stories from a fixed template, driven by the entropy source (so
-output still varies per build when entropy is non-deterministic). Its cover story is passed through
-[`MisdirectionGuard`](misdirection-guard.md).
+`OfflineProvider` needs no network and no key. `IsEnabled` is `false`; its `ILlmProvider` methods
+assemble names from a `Prefixes × Roles` template and cover stories from a fixed template, driven by
+the entropy source passed to its constructor. Its cover story is passed through
+[`MisdirectionGuard`](misdirection-guard.md). When `IsEnabled` is `false`, `LlmMisdirectionTransform`
+constructs an `OfflineProvider(context.Entropy)` to generate decoy names deterministically from the
+run's entropy source and uses `CoverStoryCorpus.Pick(context.Entropy, domain)` for cover stories.
 
 ## Claude provider
 

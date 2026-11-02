@@ -6,7 +6,7 @@ namespace Trickster.DotNet.Misdirection;
 /// <summary>
 /// Offline fallback corpus of coherent, benign cover stories used when no LLM provider is
 /// configured. Every story is passed through <see cref="MisdirectionGuard"/> so it stays
-/// pure misdirection — a false description of the code, never an imperative payload.
+/// pure misdirection: a false description of the code, never an imperative payload.
 /// </summary>
 internal static class CoverStoryCorpus
 {

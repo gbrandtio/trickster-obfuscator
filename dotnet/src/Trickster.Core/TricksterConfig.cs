@@ -80,6 +80,12 @@ public sealed class FeatureFlags
 
     [JsonPropertyName("antiDebug")]
     public AntiDebugOptions AntiDebug { get; set; } = new() { Enabled = false };
+
+    [JsonPropertyName("virtualization")]
+    public ToggleOptions Virtualization { get; set; } = new() { Enabled = false };
+
+    [JsonPropertyName("rasp")]
+    public RaspOptions Rasp { get; set; } = new() { Enabled = false };
 }
 
 /// <summary>Base for a flag that is simply on/off.</summary>
@@ -94,12 +100,24 @@ public sealed class RenameOptions : ToggleOptions
     /// <summary>When true, the public API surface is preserved (names not changed).</summary>
     [JsonPropertyName("keepPublic")]
     public bool KeepPublic { get; set; } = true;
+
+    /// <summary>
+    /// Symbol names or wildcard patterns (matching simple Name or FullName) to exclude from renaming.
+    /// </summary>
+    [JsonPropertyName("exclude")]
+    public List<string> Exclude { get; set; } = new();
 }
 
 public sealed class ControlFlowOptions : ToggleOptions
 {
     [JsonPropertyName("opaquePredicates")]
     public bool OpaquePredicates { get; set; } = true;
+
+    [JsonPropertyName("flatten")]
+    public bool Flatten { get; set; } = true;
+
+    [JsonPropertyName("indirectDispatch")]
+    public bool IndirectDispatch { get; set; } = true;
 }
 
 public sealed class AntiDebugOptions : ToggleOptions
@@ -114,9 +132,45 @@ public sealed class AntiDebugOptions : ToggleOptions
     public bool Decoy { get; set; } = false;
 }
 
+/// <summary>
+/// Runtime Application Self-Protection. Opt-in, off by default. Injects a runtime monitor that
+/// re-checks for debuggers, profilers, and whole-image tampering during execution (not only at
+/// load) and, on detection, degrades eligible methods to inert fake return values. Detection-only:
+/// no destructive action, no machine impact, no AV/EDR/sandbox evasion.
+/// </summary>
+public sealed class RaspOptions : ToggleOptions
+{
+    /// <summary>Re-sample the managed <c>Debugger.IsAttached</c>/<c>IsLogging</c> flags live.</summary>
+    [JsonPropertyName("liveDebuggerCheck")]
+    public bool LiveDebuggerCheck { get; set; } = true;
+
+    /// <summary>
+    /// Detect native debuggers the managed flag misses (Windows: <c>IsDebuggerPresent</c> /
+    /// <c>CheckRemoteDebuggerPresent</c>; Linux: <c>/proc/self/status</c> <c>TracerPid</c>). macOS
+    /// is not covered. OS-gated and wrapped in try/catch so it never faults an unsupported host.
+    /// </summary>
+    [JsonPropertyName("nativeDebuggerCheck")]
+    public bool NativeDebuggerCheck { get; set; } = true;
+
+    /// <summary>Detect an attached CLR profiler/hook via the standard profiler environment variables.</summary>
+    [JsonPropertyName("profilerCheck")]
+    public bool ProfilerCheck { get; set; } = true;
+
+    /// <summary>
+    /// Re-verify the whole-image SHA-256 during execution (throttled by <see cref="IntegrityIntervalMs"/>).
+    /// Requires the <c>integrity</c> tier; skipped with a build-time warning if it is disabled.
+    /// </summary>
+    [JsonPropertyName("periodicIntegrityCheck")]
+    public bool PeriodicIntegrityCheck { get; set; } = true;
+
+    /// <summary>Minimum milliseconds between whole-image re-hashes (amortizes the cost).</summary>
+    [JsonPropertyName("integrityIntervalMs")]
+    public int IntegrityIntervalMs { get; set; } = 5000;
+}
+
 public sealed class MisdirectionOptions : ToggleOptions
 {
-    /// <summary>"low" | "medium" | "high" — scales how many decoys are injected.</summary>
+    /// <summary>"low" | "medium" | "high": scales how many decoys are injected.</summary>
     [JsonPropertyName("intensity")]
     public string Intensity { get; set; } = "medium";
 

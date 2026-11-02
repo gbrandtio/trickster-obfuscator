@@ -15,14 +15,14 @@ emit awkward or misleading output.
 ## Purpose / threat model
 
 Most reverse engineers start from a decompiler. If the analyst's own tools render broken or confusing
-C#, the misdirection comes from the toolchain, not just from comments. This complements the other
+C#, the toolchain itself becomes a source of misdirection. This complements the other
 tiers by degrading the quality of the reconstructed source an LLM or human would read.
 
 ## How it works
 
-The pass injects one type (name `"<>c__" + <confusable>`) containing several `static void` methods
-with names chosen to resemble compiler-generated artifacts but which are not valid C# identifiers,
-for example `"<>c__DisplayTrap"`, `"<Poison>b__0"`, `"<>9__Decoy"`, `"get_<trap>k__"`,
+The pass injects one internal static type (name `"<>c__" + <confusable>`) containing five `private static void` methods
+with names chosen to resemble compiler-generated artifacts that are not valid C# identifiers:
+`"<>c__DisplayTrap"`, `"<Poison>b__0"`, `"<>9__Decoy"`, `"get_<trap>k__"`, and
 `"<Finally>d__7"`. Each method body is a single `ret`. The members are unreferenced and do nothing;
 the CLR loads them fine, but decompilers must escape or mishandle the names.
 

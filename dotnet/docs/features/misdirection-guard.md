@@ -14,19 +14,19 @@ enforces exactly this line. It is applied to **both** the built-in corpus and an
 generated text can smuggle a payload into the obfuscated binary.
 
 `IsSafe(text)` returns whether text is within scope. `Require(text)` returns the text if safe and
-otherwise throws — generation must not proceed with a rejected string. In the misdirection pass a
+otherwise throws, as generation must not proceed with a rejected string. In the misdirection pass a
 rejection is caught and the offline corpus is used instead.
 
 ## What it rejects
 
 Four pattern groups (case-insensitive regexes):
 
-1. **Imperative prompt injection** — e.g. "ignore your/previous/prior instructions / prompts / rules".
-2. **Destructive verbs** — e.g. `rm -rf`, `del /`, `format c:`, `drop table`, `shutdown`, `execute`,
+1. **Imperative prompt injection**: e.g. "ignore your/previous/prior instructions / prompts / rules".
+2. **Destructive verbs**: e.g. `rm -rf`, `del /`, `format c:`, `drop table`, `shutdown`, `execute`,
    "run the following".
-3. **Exfiltration** — `exfiltrate…`, `leak`, "send … to/secrets/credentials/keys",
+3. **Exfiltration**: `exfiltrate…`, `leak`, "send … to/secrets/credentials/keys",
    "upload … to/secrets".
-4. **Safety override** — "disable/bypass/turn off … safety/guardrails/security/protection".
+4. **Safety override**: "disable/bypass/turn off … safety/guardrails/security/protection".
 
 Benign descriptive text ("Internal telemetry buffer that flushes on a timer.") passes; payload-style
 text is rejected. This behavior is covered by tests.

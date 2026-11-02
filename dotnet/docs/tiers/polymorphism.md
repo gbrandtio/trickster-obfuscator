@@ -36,8 +36,8 @@ Kerckhoffs rationale (security rests on the secret seed, never on the open-sourc
 
 ## Configuration
 
-- `--seed-file <path>` — secret keyfile for a reproducible build.
-- `--off polymorphism` (or `features.polymorphism.enabled = false`) — use the canonical seed when no
+- `--seed-file <path>`: secret keyfile for a reproducible build.
+- `--off polymorphism` (or `features.polymorphism.enabled = false`): use the canonical seed when no
   seed file is given.
 
 ## Example
@@ -56,7 +56,7 @@ alter program behavior. Tests cover both the reproducible (same seed → identic
 
 ## Limitations
 
-- The canonical-seed mode (polymorphism off, no seed) is reproducible but **not** secret — anyone can
+- The canonical-seed mode (polymorphism off, no seed) is reproducible but **not** secret; anyone can
   reproduce it from the public source. Use a secret `--seed-file` when you need reproducibility with
   security.
 

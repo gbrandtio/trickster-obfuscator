@@ -26,6 +26,26 @@ public sealed class DotNetObfuscationContext : IObfuscationContext
     public List<string> Canaries { get; } = new();
 
     /// <summary>
+    /// Decoy types injected with domain-plausible names by the misdirection pass, preserved by
+    /// the rename pass so their readable names survive alongside their [Description] stories.
+    /// </summary>
+    public HashSet<TypeDefinition> PreservedDecoyTypes { get; } = new();
+
+    /// <summary>
+    /// Unique 32-byte placeholder marker emitted by the integrity pass into the assembly image.
+    /// After the assembly is written to disk, <see cref="AssemblyObfuscator"/> replaces this
+    /// marker with the SHA-256 digest of the whole image (with the marker bytes zeroed).
+    /// </summary>
+    public byte[]? WholeImageDigestMarker { get; set; }
+
+    /// <summary>
+    /// The injected <c>static bool</c> whole-image verification method emitted by the integrity
+    /// pass (returns <c>true</c> when the on-disk image is intact or cannot be checked). The RASP
+    /// pass reuses it for its periodic re-check; null when the integrity tier is disabled.
+    /// </summary>
+    public MethodDefinition? WholeImageVerifyMethod { get; set; }
+
+    /// <summary>
     /// One name generator shared by every transform, so generated identifiers are unique
     /// across the whole module. Transforms must use this rather than constructing their own,
     /// otherwise two independently-generated names could collide and produce duplicate types.

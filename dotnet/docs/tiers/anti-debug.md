@@ -24,17 +24,18 @@ The pass injects a static method that calls `System.Diagnostics.Debugger.get_IsA
 the module initializer so it runs at load.
 
 **Benign mode (`decoy` off, default):** the probe `pop`s the result and returns. The detection result
-is discarded — the probe only raises the cost of casual inspection.
+is discarded; the probe only raises the cost of casual inspection.
 
 **Degrade-to-decoy mode (`decoy` on):** the probe stores the result (sampled once, at load) into a
-shared static flag. Eligible methods get an entry guard — `if (observed) { decoy(); return <fake>; }`
-— so that, when a debugger was attached at load, they divert into an inert decoy routine and return a
+shared static flag. Eligible methods get an entry guard (`if (observed) { decoy(); return <fake>; }`)
+so that, when a debugger was attached at load, they divert into an inert decoy routine (which computes
+`a * b + a` on two random integers and discards the result) and return a
 fake value instead of running their real body. To keep the fake value guaranteed non-crashing, only
 methods returning a **value type** (diverted to `default(T)`) or **`string`** (diverted to a fake
-literal) are eligible. Reference-returning methods — including `Task`/async and iterator methods — are
+literal `"svc_" + <12 lowercase hex chars>`) are eligible. Reference-returning methods (including `Task`/async and iterator methods), `void` methods, by-ref/pointer returns, and generic-parameter returns are
 left untouched, so the decoy can never hand a caller a `null` to fault on. Also skipped: the assembly
-entry point, async/iterator state-machine methods, and the same cases `rename` skips (ctors,
-accessors, virtuals, P/Invoke, interfaces, and — when `keepPublic` — the public API).
+entry point, methods carrying `[AsyncStateMachine]` or `[IteratorStateMachine]`, and the same cases
+`rename` skips (constructors, runtime-special-name methods, property/event accessors, virtual/abstract/override methods, P/Invoke, interfaces, and, when `features.rename.keepPublic` is true, public, family, and `protected internal` members).
 
 ## Configuration
 
@@ -51,7 +52,7 @@ dotnet … dotnet obfuscate MyLib.dll -o MyLib.obf.dll --anti-debug-decoy
 
 ## Behavior preservation / safety
 
-With no debugger attached, behavior is identical to the un-obfuscated program — in benign mode the
+With no debugger attached, behavior is identical to the un-obfuscated program: in benign mode the
 probe reads and discards one boolean; in decoy mode the guard's `observed` flag is `false`, so every
 method runs its real body. Behavior-preservation tests pass with both modes enabled. The decoy divert
 is itself bounded: it only alters the program's own value/`string` return values, takes no destructive

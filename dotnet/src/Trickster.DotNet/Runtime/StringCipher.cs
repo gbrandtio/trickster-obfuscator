@@ -3,18 +3,18 @@ using System.Text;
 namespace Trickster.DotNet.Runtime;
 
 /// <summary>
-/// Build-time string cipher. v1 uses a per-string single-byte XOR so the injected runtime
-/// decryptor stays small and provably valid IL. The point of this tier is information
-/// removal from the static form (literals become byte arrays + a call), not cryptographic
-/// strength; a multi-byte key schedule is a documented later refinement.
+/// Build-time string cipher using a per-literal multi-byte key and a position-dependent
+/// rolling XOR schedule: <c>cipher[i] = plain[i] ^ key[i % key.Length] ^ ((i * 31) &amp; 0xFF)</c>.
 /// </summary>
 internal static class StringCipher
 {
-    public static byte[] Encrypt(string value, byte key)
+    public const int KeyLength = 8;
+
+    public static byte[] Encrypt(string value, ReadOnlySpan<byte> key)
     {
         var bytes = Encoding.UTF8.GetBytes(value);
         for (int i = 0; i < bytes.Length; i++)
-            bytes[i] = (byte)(bytes[i] ^ key);
+            bytes[i] = (byte)(bytes[i] ^ key[i % key.Length] ^ ((i * 31) & 0xFF));
         return bytes;
     }
 }
