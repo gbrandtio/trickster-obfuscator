@@ -196,6 +196,11 @@ public sealed class AntiDebugTransform : DotNetTransform
         if (HasStateMachineAttribute(m)) return false;               // async/iterator kickoff methods
         if (keepPublic && (m.IsPublic || m.IsFamily || m.IsFamilyOrAssembly)) return false;
 
+        // out/ref/pointer parameters: the decoy returns early without writing them, so the
+        // caller would read an unwritten argument. Leave such methods untouched.
+        foreach (var p in m.Parameters)
+            if (p.ParameterType.IsByReference || p.ParameterType.IsPointer) return false;
+
         // Only returns we can divert to a provably inert, non-null value: a value type
         // (default(T)) or string (fake literal). Reference returns (classes, arrays, Task,
         // generic parameters) and by-ref/pointer returns are left untouched so the decoy can
