@@ -18,6 +18,16 @@ public static class Demo
 
     public static int Add(int a, int b) => a + b;
 
+    /// <summary>Reads an embedded resource; exercises resource-encryption's runtime shim.</summary>
+    public static string ReadPayload()
+    {
+        var asm = typeof(Demo).Assembly;
+        using var stream = asm.GetManifestResourceStream("SampleLibrary.payload.txt");
+        if (stream is null) return "<missing>";
+        using var reader = new System.IO.StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
     private static string Classify(int value)
     {
         if (value % 2 == 0) return "even";

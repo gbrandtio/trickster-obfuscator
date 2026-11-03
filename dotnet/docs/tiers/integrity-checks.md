@@ -8,8 +8,8 @@ it.
 
 | | |
 |---|---|
-| CLI flag | on by default; `--no-integrity` to disable; `--integrity` to force on |
-| Config key | `features.integrityChecks` (`enabled`) |
+| CLI flag | on by default. `--no-integrity` turns it off. `--integrity` forces it on. `--integrity-distributed <n>` and `--integrity-probabilistic` add the optional hardening below. |
+| Config key | `features.integrityChecks` (`enabled`, `distributedChecks`, `probabilisticResponse`) |
 | Default | **on** |
 | Source | `src/Trickster.DotNet/Transforms/IntegrityCheckTransform.cs`, `src/Trickster.DotNet/AssemblyObfuscator.cs`, `src/Trickster.DotNet/Runtime/CecilExtensions.cs`, `src/Trickster.DotNet/Runtime/WholeImageVerify.cs` |
 
@@ -42,10 +42,31 @@ The whole-image check is emitted as a shared `static bool` verifier
 (`Runtime/WholeImageVerify.cs`); the load guard throws on `false`, and the [`rasp`](rasp.md) tier
 reuses the same method for its periodic runtime re-check.
 
+## Optional hardening
+
+Two opt-in sub-options build on the load-time guard. Both are off by default, so the default output
+is unchanged.
+
+- **`distributedChecks` (int, default `0`).** Adds that many extra inline whole-image checks. Each check
+  is placed at the start of a random method, so a single NOP cannot disable all of them. Each check
+  calls the same `WholeImageVerify` method as the load guard. With `probabilisticResponse` off, a failed
+  check throws `InvalidOperationException` at the check site.
+- **`probabilisticResponse` (bool, default `false`).** Changes what a failed check does. The check sets a
+  shared tamper flag and lets the real body run. Eligible methods then return an inert fake value once
+  the flag is set. The failure appears far from the check site. Eligible methods are the same value- and
+  `string`-returning methods that the [`rasp`](rasp.md) tier diverts. Public methods are skipped when
+  `rename.keepPublic` is true.
+
+Use `distributedChecks` alone for more coverage. Add `probabilisticResponse` when a throw at the check
+site would reveal where the check is.
+
 ## Configuration
 
 - `--no-integrity` to disable, `--integrity` to force on.
-- Config: `{ "features": { "integrityChecks": { "enabled": true } } }`.
+- `--integrity-distributed <n>`: scatter `n` extra checks (`n` must be zero or more).
+- `--integrity-probabilistic`: degrade eligible methods to inert fakes on tamper. Also turns on the
+  tier.
+- Config: `{ "features": { "integrityChecks": { "enabled": true, "distributedChecks": 0, "probabilisticResponse": false } } }`.
 
 ## Example
 
@@ -64,6 +85,8 @@ preservation and single-byte file-tampering detection are covered by automated t
   itself alongside their modifications.
 - When an assembly is loaded purely from memory (`Assembly.Location` is empty), only the 48-byte
   canary check runs.
+- Every distributed check calls the same verifier method. Patching that one method disables all of
+  them at once.
 
 ## Related docs
 

@@ -24,4 +24,7 @@ public static class ArtifactKeys
 
     /// <summary>Output: canary identifiers planted by honeypots, surfaced to the caller.</summary>
     public static readonly ArtifactKey<List<string>> Canaries = new(nameof(Canaries));
+
+    /// <summary>Output: the per-build fingerprint id embedded for leak forensics.</summary>
+    public static readonly ArtifactKey<string> Fingerprint = new(nameof(Fingerprint));
 }

@@ -40,6 +40,25 @@ internal static class ObfuscationHarness
         }
     }
 
+    /// <summary>Load an obfuscated assembly in isolation and invoke Demo.ReadPayload().</summary>
+    public static string InvokePayload(string assemblyPath)
+    {
+        var alc = new AssemblyLoadContext(name: Path.GetFileName(assemblyPath), isCollectible: true);
+        try
+        {
+            var asm = alc.LoadFromAssemblyPath(assemblyPath);
+            var type = asm.GetType("SampleLibrary.Demo")
+                       ?? throw new Exception("Demo type missing after obfuscation");
+            var method = type.GetMethod("ReadPayload")
+                         ?? throw new Exception("ReadPayload method missing after obfuscation");
+            return (string)method.Invoke(null, null)!;
+        }
+        finally
+        {
+            alc.Unload();
+        }
+    }
+
     // .NET stores IL string literals in the UTF-16 user-string heap, so check both encodings.
     public static bool FileContainsText(string path, string text)
     {
@@ -68,8 +87,14 @@ internal static class ObfuscationHarness
         c.Features.AntiDebug.Enabled = true;
         c.Features.Virtualization.Enabled = true;
         c.Features.Rasp.Enabled = true;
+        c.Features.Rasp.AnalysisToolCheck = true;
+        c.Features.Rasp.SandboxCheck = true;
         c.Features.LlmBloat.Enabled = true;
         c.Features.LlmBloat.Intensity = "low"; // keep the all-tiers build fast
+        c.Features.ResourceEncryption.Enabled = true;
+        c.Features.Fingerprint.Enabled = true;
+        c.Features.IntegrityChecks.DistributedChecks = 3;
+        c.Features.IntegrityChecks.ProbabilisticResponse = true;
         return c;
     }
 }

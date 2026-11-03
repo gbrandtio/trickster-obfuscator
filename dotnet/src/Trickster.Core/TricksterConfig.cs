@@ -60,6 +60,15 @@ public sealed class FeatureFlags
     [JsonPropertyName("stringEncryption")]
     public ToggleOptions StringEncryption { get; set; } = new() { Enabled = true };
 
+    [JsonPropertyName("constants")]
+    public ConstantOptions Constants { get; set; } = new() { Enabled = true };
+
+    [JsonPropertyName("resourceEncryption")]
+    public ResourceEncryptionOptions ResourceEncryption { get; set; } = new() { Enabled = false };
+
+    [JsonPropertyName("fingerprint")]
+    public FingerprintOptions Fingerprint { get; set; } = new() { Enabled = false };
+
     [JsonPropertyName("controlFlow")]
     public ControlFlowOptions ControlFlow { get; set; } = new();
 
@@ -67,7 +76,7 @@ public sealed class FeatureFlags
     public MisdirectionOptions LlmMisdirection { get; set; } = new();
 
     [JsonPropertyName("integrityChecks")]
-    public ToggleOptions IntegrityChecks { get; set; } = new() { Enabled = true };
+    public IntegrityOptions IntegrityChecks { get; set; } = new() { Enabled = true };
 
     [JsonPropertyName("polymorphism")]
     public ToggleOptions Polymorphism { get; set; } = new() { Enabled = true };
@@ -123,6 +132,77 @@ public sealed class ControlFlowOptions : ToggleOptions
     public bool IndirectDispatch { get; set; } = true;
 }
 
+/// <summary>
+/// Numeric/constant obfuscation. On by default (behavior-safe, like string encryption). Rewrites
+/// integer literals (<c>ldc.i4</c>/<c>ldc.i8</c>) into equivalent inline arithmetic so magic
+/// numbers, table sizes and flag masks are not readable static anchors. Runs before string
+/// encryption so it never touches that tier's emitted byte-array constants.
+/// </summary>
+public sealed class ConstantOptions : ToggleOptions
+{
+    /// <summary>"low" | "medium" | "high": the fraction of integer literals rewritten.</summary>
+    [JsonPropertyName("intensity")]
+    public string Intensity { get; set; } = "medium";
+
+    /// <summary>Percent chance (0-100) a given literal is rewritten, derived from intensity.</summary>
+    public int RewriteChance => (Intensity ?? "medium").ToLowerInvariant() switch
+    {
+        "low" => 35,
+        "high" => 100,
+        _ => 70,
+    };
+}
+
+/// <summary>
+/// Embedded-resource encryption. Opt-in, off by default. Encrypts the assembly's embedded resources
+/// and redirects the author's own <c>Assembly.GetManifestResourceStream(string)</c> calls through an
+/// injected decrypting shim. This raises the bar against static/offline resource extraction; the
+/// per-build key ships in the assembly, so it is obfuscation, not a cryptographic boundary.
+/// </summary>
+public sealed class ResourceEncryptionOptions : ToggleOptions
+{
+    /// <summary>Resource names (exact or <c>*</c>/<c>?</c> wildcard) to leave in the clear.</summary>
+    [JsonPropertyName("exclude")]
+    public List<string> Exclude { get; set; } = new();
+}
+
+/// <summary>
+/// Per-build fingerprint for leak forensics. Opt-in, off by default. Embeds a unique identifier
+/// across multiple carriers (an encrypted resource plus an inert constant) so a leaked build traces
+/// back to a licensee. The id is surfaced to the author in the run result / map and recoverable with
+/// the <c>fingerprint-verify</c> command. Own-binary only; no third-party payload.
+/// </summary>
+public sealed class FingerprintOptions : ToggleOptions
+{
+    /// <summary>Licensee/customer identifier recorded in the fingerprint (optional).</summary>
+    [JsonPropertyName("customerId")]
+    public string CustomerId { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Integrity / anti-tamper. On by default. Beyond the load-time module-initializer guard, two opt-in
+/// upgrades harden it: <see cref="DistributedChecks"/> scatters additional inline verifier calls so a
+/// single NOP cannot disable protection, and <see cref="ProbabilisticResponse"/> degrades eligible
+/// methods to inert fake returns on tamper instead of throwing at the check site, surfacing the
+/// failure far from where it was detected.
+/// </summary>
+public sealed class IntegrityOptions : ToggleOptions
+{
+    /// <summary>
+    /// Number of additional random methods to seed with an inline whole-image check. 0 (default)
+    /// keeps the legacy single load-time guard only.
+    /// </summary>
+    [JsonPropertyName("distributedChecks")]
+    public int DistributedChecks { get; set; } = 0;
+
+    /// <summary>
+    /// When true, a tripped distributed check latches a shared flag and eligible methods divert to
+    /// inert fake returns rather than the guard throwing immediately. Off by default.
+    /// </summary>
+    [JsonPropertyName("probabilisticResponse")]
+    public bool ProbabilisticResponse { get; set; } = false;
+}
+
 public sealed class AntiDebugOptions : ToggleOptions
 {
     /// <summary>
@@ -149,11 +229,27 @@ public sealed class RaspOptions : ToggleOptions
 
     /// <summary>
     /// Detect native debuggers the managed flag misses (Windows: <c>IsDebuggerPresent</c> /
-    /// <c>CheckRemoteDebuggerPresent</c>; Linux: <c>/proc/self/status</c> <c>TracerPid</c>). macOS
-    /// is not covered. OS-gated and wrapped in try/catch so it never faults an unsupported host.
+    /// <c>CheckRemoteDebuggerPresent</c>; Linux: <c>/proc/self/status</c> <c>TracerPid</c>; macOS:
+    /// <c>sysctl</c> <c>KERN_PROC</c> <c>P_TRACED</c>). OS-gated and wrapped in try/catch so it never
+    /// faults an unsupported host.
     /// </summary>
     [JsonPropertyName("nativeDebuggerCheck")]
     public bool NativeDebuggerCheck { get; set; } = true;
+
+    /// <summary>
+    /// Detect known reverse-engineering tools running on the host by process name (dnSpy, ILSpy,
+    /// dotPeek, x64dbg, Frida, Wireshark, …). Opt-in, off by default (process enumeration can
+    /// false-positive on developer/CI machines). Throttled; degrades, never crashes.
+    /// </summary>
+    [JsonPropertyName("analysisToolCheck")]
+    public bool AnalysisToolCheck { get; set; } = false;
+
+    /// <summary>
+    /// Detect coarse virtual-machine / sandbox artifacts (e.g. an implausibly small processor count).
+    /// Opt-in, off by default (false-positive-prone on legitimate VMs). Degrades, never crashes.
+    /// </summary>
+    [JsonPropertyName("sandboxCheck")]
+    public bool SandboxCheck { get; set; } = false;
 
     /// <summary>Detect an attached CLR profiler/hook via the standard profiler environment variables.</summary>
     [JsonPropertyName("profilerCheck")]

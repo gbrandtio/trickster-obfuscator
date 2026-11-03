@@ -33,7 +33,7 @@ as sibling engines later.
 
 Each tier ships a self-describing **module** (`ITransformModule`) that owns its feature-flag gate
 (`IsEnabled`/`SetEnabled`), an `Order` band, and the artifacts it `Produces`/`Consumes`. The
-`DotNetTransformRegistry` lists the ten modules; **adding a tier is a new module plus one registry
+`DotNetTransformRegistry` lists every tier module; **adding a tier is a new module plus one registry
 line** — nothing else (the CLI's `--only`/`--off` handling iterates the registry too).
 
 `TransformChainBuilder.Build(registry, config)` orders the modules by their `Order` band and wires
@@ -52,6 +52,7 @@ Inter-tier handoffs go through `context.Artifacts`, a typed blackboard. Producer
 | `WholeImageDigestMarker` | `integrity` | the digest post-write step |
 | `RenameMap` (output) | `rename` | the result |
 | `Canaries` (output) | `honeypots` | the result |
+| `Fingerprint` (output) | `fingerprint` | the result |
 
 ## Run flow
 
@@ -70,8 +71,9 @@ Inter-tier handoffs go through `context.Artifacts`, a typed blackboard. Producer
    that, when `WholeImageDigestMarker` was published, computes and stamps the whole-image SHA-256
    digest into the written `Trickster.Integrity` embedded resource. (The engine does not know the
    marker layout — the tier that produced it does.)
-7. Return `ObfuscationResult(OutputPath, RenamedSymbols, Canaries, RenameMap)`, reading the output
-   artifacts (empty when `rename`/`honeypots` are off); `RenamedSymbols` is the `RenameMap` count.
+7. Return `ObfuscationResult(OutputPath, RenamedSymbols, Canaries, RenameMap, Fingerprint)`, reading the
+   output artifacts (empty when `rename`/`honeypots` are off, and `null` when `fingerprint` is off);
+   `RenamedSymbols` is the `RenameMap` count.
 
 ### Shared name generator
 
@@ -83,10 +85,12 @@ types and an unloadable assembly.
 ### Pass order
 
 Every module sits in the chain, but a disabled one skips itself. The `Order` bands produce:
-`misdirection`, `honeypots`, `strings`, `virtualize`, `controlflow`, `rename`, `integrity`,
-`poison`, `antidebug`, `rasp`. Decoys go in first so later
-passes treat them like real code; structural passes (`strings`, `virtualize`, `controlflow`, `rename`)
-run next; the sealing passes (`integrity`, `poison`, `antidebug`, `rasp`) go last. `rasp` runs after
+`misdirection`, `honeypots`, `fingerprint`, `constants`, `strings`, `resources`, `virtualize`,
+`controlflow`, `rename`, `integrity`, `poison`, `llmbloat`, `antidebug`, `rasp`. Decoys go in first so
+later passes treat them like real code; structural passes (`constants`, `strings`, `resources`,
+`virtualize`, `controlflow`, `rename`) run next; the sealing passes (`integrity`, `poison`, `llmbloat`,
+`antidebug`, `rasp`) go last. `resources` runs before `integrity`, so the integrity resource is never
+encrypted. `rasp` runs after
 `integrity` so the `Trickster.Integrity` resource exists for its periodic re-check. Polymorphism is
 not a pass; it only selects the entropy source.
 
@@ -98,7 +102,7 @@ The order reflects intended cost to a reverse engineer; it is not a measured res
 2. **Names**: `rename` removes most readable identifiers (public API and configured exclusions kept by default).
 3. **Entangled decoys**: `misdirection`, `honeypots`, `controlflow`: false paths, flattened state machines, and descriptions
    that must be reasoned about rather than deleted.
-4. **Information removal**: `strings` and `controlflow` (`indirectDispatch`): literal text is encrypted with a multi-byte rolling key schedule, and intra-module static calls are routed through static delegate fields.
+4. **Information removal**: `strings` and `controlflow` (`indirectDispatch`): literal text is encrypted with a multi-byte rolling key schedule, and intra-module static calls are routed through static delegate fields. `constants` hides integer literals behind inline arithmetic, and `resources` encrypts embedded resources (opt-in).
 5. **Integrity and polymorphism**: `integrity` verifies a baked canary and the whole-image SHA-256 of the assembly file on disk; `polymorphism`
    makes each build different.
    - **Runtime self-protection**: `rasp` re-runs debugger/profiler/whole-image checks *during* execution (not only at load) and degrades guarded methods to inert fakes on detection, closing the one-shot-at-load gap of `integrity`/`antidebug`.
@@ -114,6 +118,9 @@ The order reflects intended cost to a reverse engineer; it is not a measured res
   value/`string` returns to inert fakes, and only when a debugger is attached at load); `integrity`
   verifies the baked canary and file image at load time but can still be patched out by a reverser who
   removes the guard; `strings` ships the decryptor and per-literal 8-byte keys in the same assembly.
+- `resources` ships its per-build key in the assembly, so it hides resource bytes from static tools but
+  is not a cryptographic boundary. `fingerprint` also ships its key locally. It is for leak tracing, not
+  secrecy.
 - `rasp` re-checks during execution, but — like every in-binary tier — it is itself IL in the shipped
   assembly: a reverser can neuter its `Evaluate()`, strip the guards, or force its flag false. It
   raises cost/deterrence (amplified by polymorphism); it is not an external root of trust.

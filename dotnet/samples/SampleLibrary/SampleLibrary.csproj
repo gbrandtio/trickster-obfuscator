@@ -3,4 +3,7 @@
     <RootNamespace>SampleLibrary</RootNamespace>
     <AssemblyName>SampleLibrary</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="payload.txt" />
+  </ItemGroup>
 </Project>

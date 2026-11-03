@@ -51,6 +51,10 @@ Common options:
 
 # Reproducible build from a secret seed
 ... obfuscate MyLib.dll -o out.dll --seed-file secret.key
+
+# Embed a leak-tracing fingerprint, then recover it from a leaked build
+... obfuscate MyLib.dll -o out.dll --fingerprint-id acme
+... fingerprint-verify out.dll
 ```
 
 By default the public API surface is preserved (`--keep-public`), so callers of your library
@@ -64,17 +68,20 @@ Tiers marked **on** run by default; the rest are opt-in.
 | Tier | Default | What it does |
 |---|---|---|
 | `rename` | on | Renames types/members to hostile names; keeps the public API and your exclusions. |
+| `constants` | on | Rewrites integer literals into equivalent inline arithmetic. |
 | `strings` | on | Encrypts string literals and injects a decryptor. |
+| `resources` | off | Encrypts embedded resources and redirects `GetManifestResourceStream(string)` calls through a decrypting shim. |
+| `fingerprint` | off | Embeds a per-build leak-tracing id, recoverable with `fingerprint-verify`. |
 | `controlflow` | on | Indirect dispatch, basic-block flattening, and an opaque entry predicate. |
 | `misdirection` | on | Domain-named decoy types with false descriptions (anti-LLM). |
-| `integrity` | on | Module-initializer canary and a whole-image SHA-256 guard. |
+| `integrity` | on | Module-initializer canary and a whole-image SHA-256 guard. Optional distributed and probabilistic hardening. |
 | `polymorphism` | on | Per-build variation / seed selection. |
 | `honeypots` | off | Fake secrets plus a leak canary. |
 | `poison` | off | Decompiler-hostile decoy members. |
 | `llmbloat` | off | Many inert decoy types that make the binary token-expensive for an LLM to analyze. |
 | `antidebug` | off | Benign `Debugger.IsAttached` probe; optional degrade-to-decoy mode. |
 | `virtualize` | off | Compiles eligible integer/boolean methods into custom VM bytecode. |
-| `rasp` | off | Runtime self-protection: re-checks for debuggers/profilers/tampering and degrades to inert fakes. |
+| `rasp` | off | Runtime self-protection: re-checks for debuggers/profilers/tampering and degrades to inert fakes. Optional analysis-tool and sandbox checks. |
 
 ## Documentation
 

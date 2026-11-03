@@ -6,6 +6,19 @@ using Trickster.DotNet;
 using Trickster.DotNet.Composition;
 using Trickster.Llm.Claude;
 
+if (args.Length >= 2 && args[0] == "dotnet" && args[1] == "fingerprint-verify")
+{
+    if (args.Length < 3) { Console.Error.WriteLine("Usage: trickster dotnet fingerprint-verify <assembly>"); return 2; }
+    try
+    {
+        var id = Trickster.DotNet.Transforms.FingerprintReader.Read(args[2]);
+        if (id is null) { Console.WriteLine("No Trickster fingerprint found."); return 1; }
+        Console.WriteLine($"Fingerprint: {id}");
+        return 0;
+    }
+    catch (Exception ex) { Console.Error.WriteLine($"error: {ex.Message}"); return 1; }
+}
+
 if (args.Length < 2 || args[0] != "dotnet" || args[1] != "obfuscate")
 {
     PrintUsage();
@@ -39,6 +52,25 @@ try
             }
             case "--no-rename": overrides.Add(c => c.Features.Rename.Enabled = false); break;
             case "--no-strings": overrides.Add(c => c.Features.StringEncryption.Enabled = false); break;
+            case "--no-constants": overrides.Add(c => c.Features.Constants.Enabled = false); break;
+            case "--constants-intensity":
+                { var v = Next(rest, ref i); overrides.Add(c => c.Features.Constants.Intensity = v); break; }
+            case "--encrypt-resources": overrides.Add(c => c.Features.ResourceEncryption.Enabled = true); break;
+            case "--fingerprint": overrides.Add(c => c.Features.Fingerprint.Enabled = true); break;
+            case "--fingerprint-id":
+                { var id = Next(rest, ref i); overrides.Add(c => { c.Features.Fingerprint.Enabled = true; c.Features.Fingerprint.CustomerId = id; }); break; }
+            case "--integrity-distributed":
+            {
+                var v = Next(rest, ref i);
+                if (!int.TryParse(v, out var n) || n < 0) throw new ArgumentException($"Invalid --integrity-distributed value: {v}");
+                overrides.Add(c => { c.Features.IntegrityChecks.Enabled = true; c.Features.IntegrityChecks.DistributedChecks = n; });
+                break;
+            }
+            case "--integrity-probabilistic":
+                overrides.Add(c => { c.Features.IntegrityChecks.Enabled = true; c.Features.IntegrityChecks.ProbabilisticResponse = true; });
+                break;
+            case "--rasp-analysis": overrides.Add(c => { c.Features.Rasp.Enabled = true; c.Features.Rasp.AnalysisToolCheck = true; }); break;
+            case "--rasp-sandbox": overrides.Add(c => { c.Features.Rasp.Enabled = true; c.Features.Rasp.SandboxCheck = true; }); break;
             case "--no-controlflow": overrides.Add(c => c.Features.ControlFlow.Enabled = false); break;
             case "--no-flatten": overrides.Add(c => c.Features.ControlFlow.Flatten = false); break;
             case "--no-indirect-dispatch": overrides.Add(c => c.Features.ControlFlow.IndirectDispatch = false); break;
@@ -99,6 +131,8 @@ try
     Console.WriteLine($"Renamed symbols: {result.RenamedSymbols}");
     foreach (var canary in result.Canaries)
         Console.WriteLine($"Canary (search for this in the wild): {canary}");
+    if (result.Fingerprint is not null)
+        Console.WriteLine($"Fingerprint (recover with 'fingerprint-verify'): {result.Fingerprint}");
 
     if (mapPath is not null)
     {
@@ -174,6 +208,7 @@ static void PrintUsage()
 
 Usage:
   trickster dotnet obfuscate <input.dll> -o <output.dll> [options]
+  trickster dotnet fingerprint-verify <assembly>   Recover an embedded build fingerprint
 
 Options:
   -o, --output <path>        Output assembly path (defaults to overwriting input)
@@ -185,6 +220,15 @@ Options:
   --no-keep-public           Also rename the public API surface
   --rename-exclude <a,b,...> Exclude matching symbols or wildcard patterns from renaming
   --no-rename --no-strings --no-controlflow --no-flatten --no-indirect-dispatch --no-misdirection
+  --no-constants             Disable integer-literal obfuscation (on by default)
+  --constants-intensity <low|medium|high>
+  --encrypt-resources        Encrypt embedded resources + redirect GetManifestResourceStream calls
+  --fingerprint              Embed a per-build leak-tracing fingerprint
+  --fingerprint-id <id>      Embed a fingerprint tagged with this licensee/customer id
+  --integrity-distributed <n>  Scatter n extra inline integrity checks across methods
+  --integrity-probabilistic    Degrade methods to inert fakes on tamper instead of throwing
+  --rasp-analysis            RASP: also detect known analysis tools (dnSpy, Frida, …)
+  --rasp-sandbox             RASP: also detect coarse VM/sandbox artifacts
   --integrity --no-integrity --honeypots --poison-decompilers --anti-debug
   --anti-debug-decoy         Anti-debug + degrade-to-decoy: eligible methods divert to inert
                              decoy logic while a debugger is attached (implies --anti-debug)
@@ -201,6 +245,6 @@ Options:
   --rasp-interval <ms>       Min milliseconds between RASP whole-image re-hashes (default 5000)
   --only <a,b,...>           Enable only these tiers
   --off  <a,b,...>           Disable these tiers
-  Tier names: rename, strings, controlflow, misdirection, integrity,
-              polymorphism, honeypots, poison, llmbloat, antidebug, virtualize, rasp");
+  Tier names: rename, strings, constants, resources, fingerprint, controlflow, misdirection,
+              integrity, polymorphism, honeypots, poison, llmbloat, antidebug, virtualize, rasp");
 }

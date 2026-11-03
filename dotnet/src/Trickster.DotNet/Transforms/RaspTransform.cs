@@ -73,6 +73,10 @@ public sealed class RaspTransform : DotNetTransform
             typeof(OSPlatform).GetProperty(nameof(OSPlatform.Windows))!.GetGetMethod());
         var osLinux = module.ImportReference(
             typeof(OSPlatform).GetProperty(nameof(OSPlatform.Linux))!.GetGetMethod());
+        var osOSX = module.ImportReference(
+            typeof(OSPlatform).GetProperty(nameof(OSPlatform.OSX))!.GetGetMethod());
+        var bitConvToInt32 = module.ImportReference(
+            typeof(BitConverter).GetMethod(nameof(BitConverter.ToInt32), new[] { typeof(byte[]), typeof(int) }));
         var readAllText = module.ImportReference(
             typeof(File).GetMethod(nameof(File.ReadAllText), new[] { typeof(string) }));
         var regexIsMatch = module.ImportReference(
@@ -106,8 +110,25 @@ public sealed class RaspTransform : DotNetTransform
             monitor.Methods.Add(getCurrentProcess);
             monitor.Methods.Add(checkRemote);
 
+            // macOS: sysctl(KERN_PROC, KERN_PROC_PID, pid) then test the P_TRACED flag in kinfo_proc.
+            var libc = new ModuleReference("libc");
+            module.ModuleReferences.Add(libc);
+            var getpid = MakePInvoke(libc, gen.Next(), "getpid",
+                PInvokeAttributes.CallConvCdecl, module.TypeSystem.Int32);
+            var sysctl = MakePInvoke(libc, gen.Next(), "sysctl",
+                PInvokeAttributes.CallConvCdecl, module.TypeSystem.Int32,
+                new ArrayType(module.TypeSystem.Int32),       // int[] name (mib)
+                module.TypeSystem.UInt32,                     // u_int namelen
+                new ArrayType(module.TypeSystem.Byte),        // void* oldp
+                new ByReferenceType(module.TypeSystem.UInt64),// size_t* oldlenp
+                module.TypeSystem.IntPtr,                     // void* newp
+                module.TypeSystem.UIntPtr);                   // size_t newlen
+            monitor.Methods.Add(getpid);
+            monitor.Methods.Add(sysctl);
+
             checkNative = BuildCheckNative(module, gen.Next(), exceptionType, isOSPlatform, osWindows,
-                osLinux, isDebuggerPresent, getCurrentProcess, checkRemote, readAllText, regexIsMatch);
+                osLinux, osOSX, isDebuggerPresent, getCurrentProcess, checkRemote, readAllText, regexIsMatch,
+                getpid, sysctl, bitConvToInt32);
             monitor.Methods.Add(checkNative);
         }
 
@@ -130,10 +151,27 @@ public sealed class RaspTransform : DotNetTransform
             monitor.Methods.Add(checkIntegrity);
         }
 
+        MethodDefinition? checkEnv = null;
+        if (opts.AnalysisToolCheck || opts.SandboxCheck)
+        {
+            var nextEnvTicks = new FieldDefinition(
+                gen.Next(), FieldAttributes.Public | FieldAttributes.Static, module.TypeSystem.Int64);
+            monitor.Fields.Add(nextEnvTicks);
+
+            var getProcessesByName = module.ImportReference(
+                typeof(System.Diagnostics.Process).GetMethod(
+                    nameof(System.Diagnostics.Process.GetProcessesByName), new[] { typeof(string) }));
+            var getProcessorCount = module.ImportReference(
+                typeof(Environment).GetProperty(nameof(Environment.ProcessorCount))!.GetGetMethod());
+            checkEnv = BuildCheckEnvironment(module, gen.Next(), exceptionType, tickCount64, nextEnvTicks,
+                getProcessesByName, getProcessorCount, opts);
+            monitor.Methods.Add(checkEnv);
+        }
+
         var evaluate = BuildEvaluate(module, gen.Next(), compromised,
             opts.LiveDebuggerCheck ? getIsAttached : null,
             opts.LiveDebuggerCheck ? isLogging : null,
-            checkProfiler, checkNative, checkIntegrity);
+            checkProfiler, checkNative, checkIntegrity, checkEnv);
         monitor.Methods.Add(evaluate);
 
         module.Types.Add(monitor);
@@ -156,6 +194,11 @@ public sealed class RaspTransform : DotNetTransform
     private static MethodDefinition MakePInvoke(
         ModuleReference dll, string name, string entryPoint, TypeReference returnType,
         params TypeReference[] parameters)
+        => MakePInvoke(dll, name, entryPoint, PInvokeAttributes.CallConvWinapi, returnType, parameters);
+
+    private static MethodDefinition MakePInvoke(
+        ModuleReference dll, string name, string entryPoint, PInvokeAttributes callConv,
+        TypeReference returnType, params TypeReference[] parameters)
     {
         var m = new MethodDefinition(
             name,
@@ -166,7 +209,7 @@ public sealed class RaspTransform : DotNetTransform
             m.Parameters.Add(new ParameterDefinition(p));
         m.IsPInvokeImpl = true;
         m.IsPreserveSig = true;
-        m.PInvokeInfo = new PInvokeInfo(PInvokeAttributes.CallConvWinapi, entryPoint, dll);
+        m.PInvokeInfo = new PInvokeInfo(callConv, entryPoint, dll);
         return m;
     }
 
@@ -244,24 +287,32 @@ public sealed class RaspTransform : DotNetTransform
 
     private static MethodDefinition BuildCheckNative(
         ModuleDefinition module, string name, TypeReference exceptionType,
-        MethodReference isOSPlatform, MethodReference osWindows, MethodReference osLinux,
+        MethodReference isOSPlatform, MethodReference osWindows, MethodReference osLinux, MethodReference osOSX,
         MethodReference isDebuggerPresent, MethodReference getCurrentProcess, MethodReference checkRemote,
-        MethodReference readAllText, MethodReference regexIsMatch)
+        MethodReference readAllText, MethodReference regexIsMatch,
+        MethodReference getpid, MethodReference sysctl, MethodReference bitConvToInt32)
     {
         var m = NewBoolMethod(module, name);
         var body = m.Body;
         body.InitLocals = true;
         var res = new VariableDefinition(module.TypeSystem.Boolean);
         var flag = new VariableDefinition(module.TypeSystem.Boolean);
+        var mib = new VariableDefinition(new ArrayType(module.TypeSystem.Int32));
+        var buf = new VariableDefinition(new ArrayType(module.TypeSystem.Byte));
+        var oldlen = new VariableDefinition(module.TypeSystem.UInt64);
         body.Variables.Add(res);
         body.Variables.Add(flag);
+        body.Variables.Add(mib);
+        body.Variables.Add(buf);
+        body.Variables.Add(oldlen);
         var il = body.GetILProcessor();
 
         // Branch targets / boundaries created up-front for stable references.
         var tryStart = il.Create(OpCodes.Call, osWindows);       // IsOSPlatform(OSPlatform.Windows)
         var checkRemoteInstr = il.Create(OpCodes.Call, getCurrentProcess);
         var notWin = il.Create(OpCodes.Call, osLinux);           // IsOSPlatform(OSPlatform.Linux)
-        var notLinux = il.Create(OpCodes.Nop);                   // placeholder -> leave done
+        var notLinux = il.Create(OpCodes.Call, osOSX);           // IsOSPlatform(OSPlatform.OSX)
+        var noMac = il.Create(OpCodes.Nop);                      // placeholder -> leave done
         var catchStart = il.Create(OpCodes.Pop);                 // handler start / try end
         var done = il.Create(OpCodes.Ldloc, res);                // handler end
 
@@ -298,7 +349,45 @@ public sealed class RaspTransform : DotNetTransform
         il.Emit(OpCodes.Stloc, res);
         il.Emit(OpCodes.Leave, done);
 
-        il.Append(notLinux);                                     // nop
+        il.Append(notLinux);                                     // call get_OSX
+        il.Emit(OpCodes.Call, isOSPlatform);
+        il.Emit(OpCodes.Brfalse, noMac);
+        // mib = { CTL_KERN=1, KERN_PROC=14, KERN_PROC_PID=1, getpid() }
+        il.Emit(OpCodes.Ldc_I4_4);
+        il.Emit(OpCodes.Newarr, module.TypeSystem.Int32);
+        il.Emit(OpCodes.Dup); il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Ldc_I4_1); il.Emit(OpCodes.Stelem_I4);
+        il.Emit(OpCodes.Dup); il.Emit(OpCodes.Ldc_I4_1); il.Emit(OpCodes.Ldc_I4, 14); il.Emit(OpCodes.Stelem_I4);
+        il.Emit(OpCodes.Dup); il.Emit(OpCodes.Ldc_I4_2); il.Emit(OpCodes.Ldc_I4_1); il.Emit(OpCodes.Stelem_I4);
+        il.Emit(OpCodes.Dup); il.Emit(OpCodes.Ldc_I4_3); il.Emit(OpCodes.Call, getpid); il.Emit(OpCodes.Stelem_I4);
+        il.Emit(OpCodes.Stloc, mib);
+        // buf = new byte[648] (kinfo_proc); oldlen = 648
+        il.Emit(OpCodes.Ldc_I4, 648);
+        il.Emit(OpCodes.Newarr, module.TypeSystem.Byte);
+        il.Emit(OpCodes.Stloc, buf);
+        il.Emit(OpCodes.Ldc_I4, 648);
+        il.Emit(OpCodes.Conv_I8);
+        il.Emit(OpCodes.Stloc, oldlen);
+        // sysctl(mib, 4, buf, ref oldlen, IntPtr.Zero, (UIntPtr)0); ignore return (buf stays zero on failure)
+        il.Emit(OpCodes.Ldloc, mib);
+        il.Emit(OpCodes.Ldc_I4_4);
+        il.Emit(OpCodes.Ldloc, buf);
+        il.Emit(OpCodes.Ldloca, oldlen);
+        il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Conv_I);
+        il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Conv_U);
+        il.Emit(OpCodes.Call, sysctl);
+        il.Emit(OpCodes.Pop);
+        // res = (BitConverter.ToInt32(buf, 32) & P_TRACED(0x800)) != 0
+        il.Emit(OpCodes.Ldloc, buf);
+        il.Emit(OpCodes.Ldc_I4, 32);
+        il.Emit(OpCodes.Call, bitConvToInt32);
+        il.Emit(OpCodes.Ldc_I4, 0x800);
+        il.Emit(OpCodes.And);
+        il.Emit(OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Cgt_Un);
+        il.Emit(OpCodes.Stloc, res);
+        il.Emit(OpCodes.Leave, done);
+
+        il.Append(noMac);                                        // nop
         il.Emit(OpCodes.Leave, done);
         // } catch (Exception) {
         il.Append(catchStart);                                   // pop exception
@@ -320,10 +409,99 @@ public sealed class RaspTransform : DotNetTransform
         return m;
     }
 
+    // Known reverse-engineering / analysis tools, matched by process name (case-insensitive by the
+    // runtime). Detection-only; degrades, never acts against the host.
+    private static readonly string[] AnalysisTools =
+    {
+        "dnSpy", "dnSpy-x86", "ILSpy", "dotPeek", "dotPeek64", "x64dbg", "x32dbg", "ollydbg",
+        "windbg", "frida", "frida-server", "wireshark", "ida", "ida64", "HTTPDebuggerUI", "Fiddler",
+    };
+
+    private static MethodDefinition BuildCheckEnvironment(
+        ModuleDefinition module, string name, TypeReference exceptionType,
+        MethodReference tickCount64, FieldDefinition nextEnvTicks,
+        MethodReference getProcessesByName, MethodReference getProcessorCount, Trickster.Core.RaspOptions opts)
+    {
+        var m = NewBoolMethod(module, name);
+        var body = m.Body;
+        body.InitLocals = true;
+        var now = new VariableDefinition(module.TypeSystem.Int64);
+        var res = new VariableDefinition(module.TypeSystem.Boolean);
+        body.Variables.Add(now);
+        body.Variables.Add(res);
+        var il = body.GetILProcessor();
+
+        var retFalse = il.Create(OpCodes.Ldc_I4_0);
+        var tryStart = il.Create(OpCodes.Nop);
+        var hit = il.Create(OpCodes.Ldc_I4_1);
+        var catchStart = il.Create(OpCodes.Pop);
+        var done = il.Create(OpCodes.Ldloc, res);
+
+        // Throttle: at most once per interval (process enumeration is not free).
+        il.Emit(OpCodes.Call, tickCount64);
+        il.Emit(OpCodes.Stloc, now);
+        il.Emit(OpCodes.Ldloc, now);
+        il.Emit(OpCodes.Ldsfld, nextEnvTicks);
+        il.Emit(OpCodes.Clt);
+        il.Emit(OpCodes.Brtrue, retFalse);
+        il.Emit(OpCodes.Ldloc, now);
+        il.Emit(OpCodes.Ldc_I4, opts.IntegrityIntervalMs);
+        il.Emit(OpCodes.Conv_I8);
+        il.Emit(OpCodes.Add);
+        il.Emit(OpCodes.Stsfld, nextEnvTicks);
+        il.Emit(OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Stloc, res);
+
+        // try {
+        il.Append(tryStart);
+        if (opts.AnalysisToolCheck)
+        {
+            foreach (var tool in AnalysisTools)
+            {
+                il.Emit(OpCodes.Ldstr, tool);
+                il.Emit(OpCodes.Call, getProcessesByName);
+                il.Emit(OpCodes.Ldlen);
+                il.Emit(OpCodes.Conv_I4);
+                il.Emit(OpCodes.Brtrue, hit);
+            }
+        }
+        if (opts.SandboxCheck)
+        {
+            il.Emit(OpCodes.Call, getProcessorCount);
+            il.Emit(OpCodes.Ldc_I4_2);
+            il.Emit(OpCodes.Blt, hit);
+        }
+        il.Emit(OpCodes.Leave, done);
+        il.Append(hit);                 // ldc.i4.1
+        il.Emit(OpCodes.Stloc, res);
+        il.Emit(OpCodes.Leave, done);
+        // } catch (Exception) {
+        il.Append(catchStart);          // pop
+        il.Emit(OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Stloc, res);
+        il.Emit(OpCodes.Leave, done);
+        // }
+        il.Append(done);                // ldloc res
+        il.Emit(OpCodes.Ret);
+        il.Append(retFalse);            // ldc.i4.0
+        il.Emit(OpCodes.Ret);
+
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = tryStart,
+            TryEnd = catchStart,
+            HandlerStart = catchStart,
+            HandlerEnd = done,
+            CatchType = exceptionType,
+        });
+        return m;
+    }
+
     private static MethodDefinition BuildEvaluate(
         ModuleDefinition module, string name, FieldDefinition compromised,
         MethodReference? getIsAttached, MethodReference? isLogging,
-        MethodReference? checkProfiler, MethodReference? checkNative, MethodReference? checkIntegrity)
+        MethodReference? checkProfiler, MethodReference? checkNative, MethodReference? checkIntegrity,
+        MethodReference? checkEnv)
     {
         var m = NewBoolMethod(module, name);
         var il = m.Body.GetILProcessor();
@@ -356,6 +534,11 @@ public sealed class RaspTransform : DotNetTransform
         if (checkIntegrity is not null)
         {
             il.Emit(OpCodes.Call, checkIntegrity);
+            il.Emit(OpCodes.Brtrue, set);
+        }
+        if (checkEnv is not null)
+        {
+            il.Emit(OpCodes.Call, checkEnv);
             il.Emit(OpCodes.Brtrue, set);
         }
 

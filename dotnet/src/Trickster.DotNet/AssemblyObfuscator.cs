@@ -6,7 +6,7 @@ namespace Trickster.DotNet;
 /// <summary>Outcome of an obfuscation run, surfaced to the CLI/tests.</summary>
 public sealed record ObfuscationResult(
     string OutputPath, int RenamedSymbols, IReadOnlyList<string> Canaries,
-    IReadOnlyDictionary<string, string> RenameMap);
+    IReadOnlyDictionary<string, string> RenameMap, string? Fingerprint = null);
 
 /// <summary>
 /// Convenience facade over <see cref="DotNetObfuscationEngine"/> wired with the default codec and

@@ -178,11 +178,15 @@ public class TierBehaviorTests
         f.Rename.Enabled = f.StringEncryption.Enabled = f.ControlFlow.Enabled =
             f.LlmMisdirection.Enabled = f.IntegrityChecks.Enabled =
             f.Honeypots.Enabled = f.DecompilerPoison.Enabled = f.AntiDebug.Enabled =
-            f.Virtualization.Enabled = f.LlmBloat.Enabled = false;
+            f.Virtualization.Enabled = f.LlmBloat.Enabled =
+            f.Constants.Enabled = f.ResourceEncryption.Enabled = f.Fingerprint.Enabled = false;
         switch (tier)
         {
             case "rename": f.Rename.Enabled = true; break;
             case "strings": f.StringEncryption.Enabled = true; break;
+            case "constants": f.Constants.Enabled = true; break;
+            case "resources": f.ResourceEncryption.Enabled = true; break;
+            case "fingerprint": f.Fingerprint.Enabled = true; break;
             case "controlflow": f.ControlFlow.Enabled = true; break;
             case "misdirection": f.LlmMisdirection.Enabled = true; break;
             case "integrity": f.IntegrityChecks.Enabled = true; break;
@@ -471,5 +475,163 @@ public class TierBehaviorTests
         var path = ObfuscationHarness.Obfuscate(TricksterConfig.Default(), "llmbloat-default");
         using var asm = AssemblyDefinition.ReadAssembly(path);
         Assert.DoesNotContain(asm.MainModule.Types, t => t.Namespace == "Trickster.Bloat");
+    }
+
+    // ---- A1: constant obfuscation ----
+
+    [Fact]
+    public void ConstantObfuscation_PreservesBehavior()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "constants");
+        var path = ObfuscationHarness.Obfuscate(c, "constants-behavior");
+        Assert.Equal(SampleLibrary.Demo.Run(6), ObfuscationHarness.InvokeRun(path, 6));
+    }
+
+    [Fact]
+    public void ConstantObfuscation_ExpandsIntegerLiterals()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "constants");
+        c.Features.Constants.Intensity = "high"; // rewrite every eligible literal
+        var path = ObfuscationHarness.Obfuscate(c, "constants-il");
+
+        // Each rewrite turns one int load into (load, load, binop), so the literal-bearing methods grow.
+        static int DemoInstrCount(string p)
+        {
+            using var asm = AssemblyDefinition.ReadAssembly(p);
+            var demo = asm.MainModule.GetTypes().First(t => t.Name == "Demo");
+            return demo.Methods.Where(m => m.HasBody).SelectMany(m => m.Body.Instructions).Count();
+        }
+        Assert.True(DemoInstrCount(path) > DemoInstrCount(ObfuscationHarness.SampleDll),
+            "expected constant-obfuscation to expand integer literals into arithmetic");
+    }
+
+    // ---- A3: resource encryption ----
+
+    [Fact]
+    public void ResourceEncryption_RemovesPlaintext_AndDecryptsAtRuntime()
+    {
+        const string plaintext = "RESOURCE-PAYLOAD-PLAINTEXT-ABC123";
+        Assert.True(ObfuscationHarness.FileContainsText(ObfuscationHarness.SampleDll, plaintext),
+            "sanity: plaintext resource present before encryption");
+
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "resources");
+        var path = ObfuscationHarness.Obfuscate(c, "resenc");
+
+        Assert.False(ObfuscationHarness.FileContainsText(path, plaintext),
+            "resource plaintext should not survive encryption");
+        Assert.Equal(plaintext, ObfuscationHarness.InvokePayload(path));
+    }
+
+    // ---- C1: fingerprint ----
+
+    [Fact]
+    public void Fingerprint_IsEmbedded_AndRecoverable()
+    {
+        var c = TricksterConfig.Default();
+        c.Features.Fingerprint.Enabled = true;
+        c.Features.Fingerprint.CustomerId = "acme";
+
+        var outPath = Path.Combine(Path.GetTempPath(), $"trickster-fp-{Guid.NewGuid():N}.dll");
+        var provider = new Trickster.Core.Llm.OfflineProvider(
+            Trickster.Core.Entropy.EntropySource.CreateNonDeterministic());
+        var result = AssemblyObfuscator.Obfuscate(
+            ObfuscationHarness.SampleDll, outPath, c, provider, NullLogger.Instance);
+
+        Assert.NotNull(result.Fingerprint);
+        Assert.StartsWith("acme:", result.Fingerprint);
+        Assert.Equal(result.Fingerprint, Trickster.DotNet.Transforms.FingerprintReader.Read(outPath));
+        Assert.Equal(SampleLibrary.Demo.Run(3), ObfuscationHarness.InvokeRun(outPath, 3));
+    }
+
+    [Fact]
+    public void Fingerprint_IsDeterministic_UnderSeed()
+    {
+        var seedPath = Path.Combine(Path.GetTempPath(), $"trickster-fpseed-{Guid.NewGuid():N}.key");
+        File.WriteAllBytes(seedPath, System.Text.Encoding.UTF8.GetBytes("fp-secret"));
+        try
+        {
+            string Build(string tag)
+            {
+                var c = TricksterConfig.Default();
+                c.Features.Fingerprint.Enabled = true;
+                c.SeedFile = seedPath;
+                var outPath = Path.Combine(Path.GetTempPath(), $"trickster-{tag}-{Guid.NewGuid():N}.dll");
+                var provider = new Trickster.Core.Llm.OfflineProvider(
+                    Trickster.Core.Entropy.EntropySource.CreateNonDeterministic());
+                var r = AssemblyObfuscator.Obfuscate(
+                    ObfuscationHarness.SampleDll, outPath, c, provider, NullLogger.Instance);
+                return r.Fingerprint!;
+            }
+
+            Assert.Equal(Build("fpa"), Build("fpb"));
+        }
+        finally { File.Delete(seedPath); }
+    }
+
+    [Fact]
+    public void Fingerprint_RecoverableFromConstant_AfterResourceStripped()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "fingerprint");
+        c.Features.Fingerprint.CustomerId = "beta";
+
+        var outPath = Path.Combine(Path.GetTempPath(), $"trickster-fpr-{Guid.NewGuid():N}.dll");
+        var provider = new Trickster.Core.Llm.OfflineProvider(
+            Trickster.Core.Entropy.EntropySource.CreateNonDeterministic());
+        var result = AssemblyObfuscator.Obfuscate(
+            ObfuscationHarness.SampleDll, outPath, c, provider, NullLogger.Instance);
+
+        // Strip the dedicated resource carrier, leaving only the constant-field copy.
+        var stripped = Path.Combine(Path.GetTempPath(), $"trickster-fprs-{Guid.NewGuid():N}.dll");
+        using (var asm = AssemblyDefinition.ReadAssembly(outPath))
+        {
+            var res = asm.MainModule.Resources.First(r => r.Name == "Trickster.Fingerprint");
+            asm.MainModule.Resources.Remove(res);
+            asm.Write(stripped);
+        }
+
+        Assert.Equal(result.Fingerprint,
+            Trickster.DotNet.Transforms.FingerprintReader.Read(stripped));
+    }
+
+    // ---- B1/B2: RASP native + environment probes ----
+
+    [Fact]
+    public void Rasp_WithNativeAndEnvProbes_PreservesBehavior()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "rasp");
+        c.Features.IntegrityChecks.Enabled = true; // periodic integrity needs the verifier
+        c.Features.Rasp.Enabled = true;
+        c.Features.Rasp.NativeDebuggerCheck = true;
+        c.Features.Rasp.AnalysisToolCheck = true;
+        c.Features.Rasp.SandboxCheck = true;
+
+        var path = ObfuscationHarness.Obfuscate(c, "rasp-native-env");
+
+        // The macOS/Linux native probe wires up a libc module reference.
+        using (var asm = AssemblyDefinition.ReadAssembly(path))
+            Assert.Contains(asm.MainModule.ModuleReferences, m => m.Name == "libc");
+
+        // Clean host (no debugger/tools detected): behavior is unchanged.
+        Assert.Equal(SampleLibrary.Demo.Run(4), ObfuscationHarness.InvokeRun(path, 4));
+    }
+
+    // ---- B3: distributed + probabilistic integrity ----
+
+    [Fact]
+    public void Integrity_DistributedProbabilistic_PreservesBehaviorWhenIntact()
+    {
+        var c = TricksterConfig.Default();
+        BehaviorPreservationTests_SetOnly(c, "integrity");
+        c.Features.IntegrityChecks.DistributedChecks = 5;
+        c.Features.IntegrityChecks.ProbabilisticResponse = true;
+
+        var path = ObfuscationHarness.Obfuscate(c, "integrity-dist");
+        // Untampered image: every scattered check passes, no method degrades.
+        Assert.Equal(SampleLibrary.Demo.Run(5), ObfuscationHarness.InvokeRun(path, 5));
     }
 }

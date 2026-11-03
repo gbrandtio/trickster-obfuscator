@@ -8,8 +8,8 @@ once a check trips.
 
 | | |
 |---|---|
-| CLI flag | `--rasp` (off by default); `--no-rasp` to disable; `--no-rasp-native`; `--rasp-interval <ms>` |
-| Config key | `features.rasp` (`enabled`, `liveDebuggerCheck`, `nativeDebuggerCheck`, `profilerCheck`, `periodicIntegrityCheck`, `integrityIntervalMs`) |
+| CLI flag | `--rasp` turns it on (off by default). `--no-rasp` turns it off. `--no-rasp-native`, `--rasp-interval <ms>`, `--rasp-analysis`, and `--rasp-sandbox` adjust it. |
+| Config key | `features.rasp` (`enabled`, `liveDebuggerCheck`, `nativeDebuggerCheck`, `profilerCheck`, `periodicIntegrityCheck`, `integrityIntervalMs`, `analysisToolCheck`, `sandboxCheck`) |
 | Default | **off** |
 | Source | `src/Trickster.DotNet/Transforms/RaspTransform.cs`, `src/Trickster.DotNet/Runtime/WholeImageVerify.cs` |
 
@@ -40,7 +40,9 @@ independently), short-circuiting on the first hit:
      catches native debuggers (WinDbg/x64dbg) that the managed flag misses.
    - **Linux** (`IsOSPlatform(Linux)`): reads `/proc/self/status` and matches `TracerPid:\s*[1-9]`
      (a ptrace-based debugger such as gdb/lldb/strace).
-   - **macOS:** not covered; falls back to the managed + profiler checks.
+   - **macOS** (`IsOSPlatform(OSX)`): calls `sysctl` with `KERN_PROC_PID` for the current process and
+     tests the `P_TRACED` flag (`0x800`) in the returned `kinfo_proc`. A debugger that attaches with
+     `ptrace`, such as lldb, sets this flag.
 3. **Profiler/hook (`profilerCheck`):** detects an attached CLR profiler via the standard environment
    variables (`CORECLR_ENABLE_PROFILER` / `COR_ENABLE_PROFILING` == `1`, or a non-empty
    `CORECLR_PROFILER`).
@@ -50,6 +52,17 @@ independently), short-circuiting on the first hit:
    concurrent callers may occasionally re-hash within one window). Reuses the shared `WholeImageVerify` method emitted by the
    [`integrity`](integrity-checks.md) tier, so it requires that tier; if `integrity` is disabled the
    pass logs a warning and skips this check (the others still run).
+5. **Analysis tools (`analysisToolCheck`, opt-in):** looks for running processes with the names of known
+   reverse-engineering and capture tools: `dnSpy`, `ILSpy`, `dotPeek`, `x64dbg`, `frida`, `wireshark`,
+   `ida`, `Fiddler`, and a few variants. The match is by process name. It is off by default because a
+   developer or CI machine that runs one of these tools would be flagged.
+6. **Sandbox (`sandboxCheck`, opt-in):** reports a hit when `Environment.ProcessorCount` is below 2. A
+   single-processor host is a coarse sign of a small VM or sandbox. The check can also flag a real
+   single-core machine.
+
+Checks 5 and 6 are throttled like the periodic integrity check. Each runs at most once per
+`integrityIntervalMs`, and returns false between runs. An exception inside either check counts as no
+hit.
 
 On entry each guarded method runs `if (Evaluate()) return <decoy>;`. To keep the fake provably
 non-crashing, only methods returning a **value type** (diverted to `default(T)`) or **`string`**
@@ -66,10 +79,13 @@ resource already exists for it to re-verify.
 ## Configuration
 
 - `--rasp` to enable; `--no-rasp` to disable.
-- `--no-rasp-native`: keep RASP but drop the native (Windows/Linux) debugger probes.
-- `--rasp-interval <ms>`: minimum milliseconds between whole-image re-hashes (default `5000`).
+- `--no-rasp-native`: keep RASP but drop the native (Windows, Linux, and macOS) debugger probes.
+- `--rasp-interval <ms>`: minimum milliseconds between whole-image re-hashes (default `5000`). Also sets the
+  minimum gap between runs of the two opt-in checks.
+- `--rasp-analysis`: also enable the analysis-tool check. Turns RASP on.
+- `--rasp-sandbox`: also enable the sandbox check. Turns RASP on.
 - `--only rasp` / `--off rasp`.
-- Config: `{ "features": { "rasp": { "enabled": true, "liveDebuggerCheck": true, "nativeDebuggerCheck": true, "profilerCheck": true, "periodicIntegrityCheck": true, "integrityIntervalMs": 5000 } } }`.
+- Config: `{ "features": { "rasp": { "enabled": true, "liveDebuggerCheck": true, "nativeDebuggerCheck": true, "profilerCheck": true, "periodicIntegrityCheck": true, "integrityIntervalMs": 5000, "analysisToolCheck": false, "sandboxCheck": false } } }`.
 
 ## Example
 
@@ -96,8 +112,10 @@ entry still completes, and that post-load file tampering is caught by the period
   server-side checks, attestation).
 - **No background thread:** checks fire only when guarded methods are called, so a program that
   stops calling them stops re-checking.
-- **Native detection is Windows + Linux only** (macOS falls back to the managed/profiler checks),
-  and `Debugger.IsAttached` sees only self-announcing managed debuggers.
+- **Native detection covers Windows, Linux, and macOS only.** Other hosts fall back to the managed and
+  profiler checks. `Debugger.IsAttached` sees only self-announcing managed debuggers.
+- **The opt-in checks are easy to evade and prone to false positives.** Renaming a tool's executable
+  defeats the analysis-tool check. The sandbox check uses one coarse number. Both stay off by default.
 - The periodic integrity re-check is skipped for memory-only loads (empty `Assembly.Location`) and
   requires the `integrity` tier.
 

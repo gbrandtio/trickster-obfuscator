@@ -16,7 +16,10 @@ public sealed class DotNetTransformRegistry : ITransformRegistry<DotNetObfuscati
         {
             new MisdirectionModule(),
             new HoneypotModule(),
+            new FingerprintModule(),
+            new ConstantObfuscationModule(),
             new StringEncryptionModule(),
+            new ResourceEncryptionModule(),
             new VirtualizationModule(),
             new ControlFlowModule(),
             new RenameModule(),

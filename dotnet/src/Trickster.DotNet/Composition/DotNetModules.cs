@@ -29,6 +29,25 @@ public sealed class HoneypotModule : DotNetTransformModule
     public override ITransform<DotNetObfuscationContext> Create() => new HoneypotTransform();
 }
 
+public sealed class FingerprintModule : DotNetTransformModule
+{
+    public override string Key => "fingerprint";
+    public override int Order => 22;
+    public override IReadOnlyList<ArtifactKey> Produces => new[] { (ArtifactKey)ArtifactKeys.Fingerprint };
+    public override bool IsEnabled(TricksterConfig c) => c.Features.Fingerprint.Enabled;
+    public override void SetEnabled(TricksterConfig c, bool v) => c.Features.Fingerprint.Enabled = v;
+    public override ITransform<DotNetObfuscationContext> Create() => new FingerprintTransform();
+}
+
+public sealed class ConstantObfuscationModule : DotNetTransformModule
+{
+    public override string Key => "constants";
+    public override int Order => 25;
+    public override bool IsEnabled(TricksterConfig c) => c.Features.Constants.Enabled;
+    public override void SetEnabled(TricksterConfig c, bool v) => c.Features.Constants.Enabled = v;
+    public override ITransform<DotNetObfuscationContext> Create() => new ConstantObfuscationTransform();
+}
+
 public sealed class StringEncryptionModule : DotNetTransformModule
 {
     public override string Key => "strings";
@@ -36,6 +55,15 @@ public sealed class StringEncryptionModule : DotNetTransformModule
     public override bool IsEnabled(TricksterConfig c) => c.Features.StringEncryption.Enabled;
     public override void SetEnabled(TricksterConfig c, bool v) => c.Features.StringEncryption.Enabled = v;
     public override ITransform<DotNetObfuscationContext> Create() => new StringEncryptionTransform();
+}
+
+public sealed class ResourceEncryptionModule : DotNetTransformModule
+{
+    public override string Key => "resources";
+    public override int Order => 33;
+    public override bool IsEnabled(TricksterConfig c) => c.Features.ResourceEncryption.Enabled;
+    public override void SetEnabled(TricksterConfig c, bool v) => c.Features.ResourceEncryption.Enabled = v;
+    public override ITransform<DotNetObfuscationContext> Create() => new ResourceEncryptionTransform();
 }
 
 public sealed class VirtualizationModule : DotNetTransformModule

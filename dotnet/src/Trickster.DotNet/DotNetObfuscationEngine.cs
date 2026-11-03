@@ -53,7 +53,8 @@ public sealed class DotNetObfuscationEngine
             ? m : new Dictionary<string, string>();
         var canaries = context.Artifacts.TryGet(ArtifactKeys.Canaries, out var c)
             ? c : new List<string>();
+        var fingerprint = context.Artifacts.TryGet(ArtifactKeys.Fingerprint, out var fp) ? fp : null;
 
-        return new ObfuscationResult(outputPath, map.Count, canaries, map);
+        return new ObfuscationResult(outputPath, map.Count, canaries, map, fingerprint);
     }
 }

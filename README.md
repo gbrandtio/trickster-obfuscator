@@ -32,17 +32,20 @@ Some are on by default, others are opt-in.
 | Tier | Default | What it does |
 |---|---|---|
 | Rename | on | Renames types/members to hostile names while preserving your public API and exclusions. |
+| Constants | on | Rewrites integer literals into equivalent inline arithmetic so magic numbers are not static anchors. |
 | String encryption | on | Encrypts string literals and injects a decryptor so literals never appear in the binary. |
+| Resource encryption | off | Encrypts embedded resources and redirects the author's resource lookups through a decrypting shim. |
+| Fingerprint | off | Embeds a per-build identifier so a leaked copy can be traced back to its build. |
 | Control flow | on | Obscures execution with indirect dispatch, block flattening, and opaque predicates. |
 | LLM misdirection | on | Plants domain-named decoy types with false descriptions to mislead AI-assisted analysis. |
-| Integrity checks | on | Embeds a tamper canary and a whole-image hash guard. |
+| Integrity checks | on | Embeds a tamper canary and a whole-image hash guard. Optional distributed and probabilistic hardening. |
 | Polymorphism | on | Varies the output per build (or per seed) so no two builds look alike. |
 | Honeypots | off | Plants fake secrets with a leak canary to detect exfiltration. |
 | Decompiler poison | off | Adds constructs that break or confuse common decompilers. |
 | LLM bloat | off | Injects many inert decoy types to make the binary token-expensive for an LLM to analyze. |
 | Anti-debug | off | Detects attached debuggers, optionally degrading to inert decoy behavior. |
 | Virtualization | off | Compiles eligible methods into custom VM bytecode. |
-| RASP | off | Runtime self-protection: re-checks for debuggers/profilers/tampering during execution. |
+| RASP | off | Runtime self-protection: re-checks for debuggers/profilers/tampering during execution. Optional analysis-tool and sandbox checks. |
 
 Feature availability and exact behavior can vary by platform. See each implementation's
 README for specifics (e.g. [`dotnet/README.md`](dotnet/README.md)).
